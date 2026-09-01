@@ -554,7 +554,7 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
                 <div className="space-y-2">
                   <div className="flex gap-2">
                     <input
-                      type="url"
+                      type="text"
                       value={icon}
                       onChange={(e) => {
                         setIcon(e.target.value);
