@@ -14,7 +14,6 @@ export interface LinkItem {
   iconConfig?: Record<string, unknown>;
   customIconUrl?: string;
   edgeoneBlobUrl?: string;
-  cloudflareR2Url?: string;
 }
 
 export interface Category {
@@ -62,7 +61,7 @@ export interface AIConfig {
 }
 
 // 图标获取方式类型
-export type IconSourceType = 'faviconextractor' | 'google' | 'customapi' | 'customurl' | 'upload-edgeone' | 'upload-cloudflare';
+export type IconSourceType = 'faviconextractor' | 'google' | 'customapi' | 'customurl' | 'upload-edgeone';
 
 // 图标配置
 export interface IconConfig {
@@ -224,5 +223,4 @@ export const INITIAL_LINKS: LinkItem[] = [
   { id: 'init3', title: 'Twitter 𝕏', url: 'https://x.com/eallion', icon: '/favicons/x.svg', description: 'Blaze your glory!', categoryId: 'common', createdAt: Date.now() },
   { id: 'init4', title: 'GitHub', url: 'https://github.com/eallion', icon: '/favicons/github.svg', description: 'Build and ship software on a single, collaborative platform', categoryId: 'common', createdAt: Date.now() },
   { id: 'init5', title: 'Cloudflare', url: 'https://dash.cloudflare.com/', icon: '/favicons/cloudflare.svg', description: 'Connect, protect, and build everywhere', categoryId: 'common', createdAt: Date.now() },
-  { id: 'init6', title: 'Vercel', url: 'https://vercel.com', icon: '/favicons/vercel.svg', description: 'Build and deploy the best web experiences with the Frontend Cloud', categoryId: 'common', createdAt: Date.now() },
 ];

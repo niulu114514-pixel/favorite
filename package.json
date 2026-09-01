@@ -3,26 +3,24 @@
   "private": true,
   "version": "2.0.1",
   "type": "module",
-  "description": "A modern cloud-based navigation page supporting EdgeOne, Cloudflare, and Vercel",
+  "description": "A modern cloud-based navigation page built on EdgeOne Pages",
   "keywords": [
     "navigation",
     "bookmarks",
     "edgeone",
-    "cloudflare",
-    "vercel",
     "react",
     "typescript",
     "vite"
   ],
   "author": "eallion",
   "license": "MIT",
-  "homepage": "https://github.com/eallion/favorite",
+  "homepage": "https://github.com/niulu114514-pixel/favorite",
   "repository": {
     "type": "git",
-    "url": "https://github.com/eallion/favorite.git"
+    "url": "https://github.com/niulu114514-pixel/favorite.git"
   },
   "bugs": {
-    "url": "https://github.com/eallion/favorite/issues"
+    "url": "https://github.com/niulu114514-pixel/favorite/issues"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -44,7 +42,6 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@edgeone/pages-blob": "^0.0.8",
     "@google/genai": "^1.52.0",
-    "@vercel/kv": "^3.0.0",
     "buffer": "^6.0.3",
     "lucide-react": "^0.554.0",
     "react": "^19.2.6",

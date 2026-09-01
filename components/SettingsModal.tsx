@@ -271,12 +271,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-500 mb-1">网站标题</label>
-                    <input type="text" value={settings.ai.websiteTitle || ''} onChange={(e) => updateAI('websiteTitle', e.target.value)} placeholder="蜗牛个人导航" className="w-full h-11 px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" />
+                    <input type="text" value={settings.ai.websiteTitle || ''} onChange={(e) => updateAI('websiteTitle', e.target.value)} placeholder="落花流水个人导航" className="w-full h-11 px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
                   <div className="space-y-4">
                     <div>
                       <label className="block text-xs font-medium text-slate-500 mb-1">网页导航名称</label>
-                      <input type="text" value={settings.ai.navigationName || ''} onChange={(e) => updateAI('navigationName', e.target.value)} placeholder="蜗牛导航" className="w-full h-11 px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <input type="text" value={settings.ai.navigationName || ''} onChange={(e) => updateAI('navigationName', e.target.value)} placeholder="落花流水导航" className="w-full h-11 px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-500 mb-1">侧边栏网页导航名称</label>
@@ -391,7 +391,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     />
                     <div>
                       <span className="text-sm text-slate-700 dark:text-slate-300 block font-medium">启用边缘抓取缓存</span>
-                      <span className="text-xs text-slate-400 block mt-0.5">开启后，域名图标首次抓取后自动缓存到平台存储（EdgeOne → Blob，Cloudflare → R2）。免费用户可取消以节省存储空间。</span>
+                      <span className="text-xs text-slate-400 block mt-0.5">开启后，域名图标首次抓取后自动缓存到 EdgeOne Pages Blob 平台存储。免费用户可取消以节省存储空间。</span>
                     </div>
                   </label>
                     {supportsUpload && (
@@ -404,7 +404,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                           {migrating ? <Loader2 className="animate-spin w-4 h-4" /> : <Upload size={16} />}
                           {migrating ? '迁移中...' : '迁移历史图标到平台存储'}
                         </button>
-                        <p className="text-[10px] text-slate-400 text-center">将历史链接的域名图标抓取后缓存到平台存储（EdgeOne → Blob，Cloudflare → R2），系统自动检测。关闭「边缘抓取缓存」后改用上游源。</p>
+                        <p className="text-[10px] text-slate-400 text-center">将历史链接的域名图标抓取后缓存到 EdgeOne Pages Blob 平台存储，系统自动检测。关闭「边缘抓取缓存」后改用上游源。</p>
                       </>
                     )}
                   </div>

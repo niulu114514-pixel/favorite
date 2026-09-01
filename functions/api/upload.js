@@ -1,5 +1,5 @@
-// EdgeOne Pages / Cloudflare Pages 统一上传接口
-// 支持将图标上传到 EdgeOne Pages Blob (腾讯云) 或 Cloudflare R2 (S3/Cloudflare)
+// EdgeOne Pages 统一上传接口
+// 支持将图标上传到 EdgeOne Pages Blob (腾讯云)
 // 简洁注释以遵循用户全局规则
 
 import { getKV, getCorsHeaders, verifyAuth, jsonResponse } from './_kvAdapter.js';
@@ -41,31 +41,21 @@ export async function onRequest(context) {
   if (request.method === 'DELETE') {
     const url = new URL(request.url);
     const key = url.searchParams.get('key');
-    const platform = url.searchParams.get('platform');
     if (!key) {
       return jsonResponse({ error: 'Key parameter required' }, 400, corsHeaders);
     }
 
     try {
-      const isCloudflareR2 = platform === 'cloudflare' || (platform !== 'edgeone' && ((env.CLOUDNAV_R2 && typeof env.CLOUDNAV_R2.delete === 'function') || env.UPLOAD_PLATFORM === 'cloudflare'));
+      // EdgeOne Pages Blob 删除
+      let getStore;
+      try {
+        const blobSdk = await import('@edgeone/pages-blob');
+        getStore = blobSdk.getStore;
+      } catch (e) {}
 
-      if (isCloudflareR2) {
-        if (!env.CLOUDNAV_R2) {
-          return jsonResponse({ error: 'Cloudflare R2 binding CLOUDNAV_R2 not found' }, 500, corsHeaders);
-        }
-        await env.CLOUDNAV_R2.delete(key);
-      } else {
-        // EdgeOne Pages Blob
-        let getStore;
-        try {
-          const blobSdk = await import('@edgeone/pages-blob');
-          getStore = blobSdk.getStore;
-        } catch (e) {}
-
-        if (getStore) {
-          const store = getStore('favicons');
-          await store.delete(key);
-        }
+      if (getStore) {
+        const store = getStore('favicons');
+        await store.delete(key);
       }
       return jsonResponse({ success: true }, 200, corsHeaders);
     } catch (err) {
@@ -139,37 +129,21 @@ export async function onRequest(context) {
     const randomId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 10);
     const key = `${categoryName}/${randomId}.${ext}`;
 
-    // 2. 检测并上传到目标平台
-    const platform = formData.get('platform');
-    const isCloudflareR2 = platform === 'cloudflare' || (platform !== 'edgeone' && ((env.CLOUDNAV_R2 && typeof env.CLOUDNAV_R2.put === 'function') || env.UPLOAD_PLATFORM === 'cloudflare'));
+    // 2. 上传到 EdgeOne Pages Blob
+    let getStore;
+    try {
+      const blobSdk = await import('@edgeone/pages-blob');
+      getStore = blobSdk.getStore;
+    } catch (e) {}
 
-    if (isCloudflareR2) {
-      if (!env.CLOUDNAV_R2) {
-        return jsonResponse({ error: 'Cloudflare R2 binding CLOUDNAV_R2 not found' }, 500, corsHeaders);
-      }
-      await env.CLOUDNAV_R2.put(key, arrayBuffer, {
-        httpMetadata: {
-          contentType: contentType,
-          cacheControl: 'public, max-age=31536000',
-        }
-      });
-    } else {
-      // 默认使用 EdgeOne Pages Blob
-      let getStore;
-      try {
-        const blobSdk = await import('@edgeone/pages-blob');
-        getStore = blobSdk.getStore;
-      } catch (e) {}
-
-      if (!getStore) {
-        return jsonResponse({ error: 'Storage backend not available' }, 500, corsHeaders);
-      }
-
-      const store = getStore('favicons');
-      await store.set(key, arrayBuffer, {
-        cacheControl: 'public, max-age=31536000'
-      });
+    if (!getStore) {
+      return jsonResponse({ error: 'Storage backend not available' }, 500, corsHeaders);
     }
+
+    const store = getStore('favicons');
+    await store.set(key, arrayBuffer, {
+      cacheControl: 'public, max-age=31536000'
+    });
 
     const iconUrl = `/api/favicon?key=${encodeURIComponent(key)}`;
     return jsonResponse({ success: true, url: iconUrl }, 200, corsHeaders);

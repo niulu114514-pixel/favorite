@@ -146,7 +146,7 @@ export function AppLayout() {
   // Apply dynamic website title and favicon
   useEffect(() => {
     if (aiConfig) {
-      document.title = aiConfig.websiteTitle || '蜗牛个人导航';
+      document.title = aiConfig.websiteTitle || '落花流水个人导航';
       
       let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
       if (!link) {
@@ -210,31 +210,14 @@ export function AppLayout() {
             console.error(e);
           }
         }
-        // 2. 清理 Cloudflare R2 历史图标
-        if (linkToDelete.cloudflareR2Url && linkToDelete.cloudflareR2Url.startsWith('/api/favicon?key=')) {
-          try {
-            const url = new URL(linkToDelete.cloudflareR2Url, window.location.origin);
-            const key = url.searchParams.get('key');
-            if (key) {
-              fetch(`/api/upload?key=${encodeURIComponent(key)}&platform=cloudflare`, {
-                method: 'DELETE',
-                headers: { 'x-auth-password': authToken || '' }
-              }).catch(err => console.error('Failed to delete cloudflare historical icon:', err));
-            }
-          } catch (e) {
-            console.error(e);
-          }
-        }
-        // 3. 兼容旧版本数据或当前选中的图标（如果没有被前面的历史记录覆盖）
+        // 2. 清理当前选中的图标（如果没有被前面的历史记录覆盖）
         if (linkToDelete.icon && linkToDelete.icon.startsWith('/api/favicon?key=') &&
-            linkToDelete.icon !== linkToDelete.edgeoneBlobUrl &&
-            linkToDelete.icon !== linkToDelete.cloudflareR2Url) {
+            linkToDelete.icon !== linkToDelete.edgeoneBlobUrl) {
           try {
             const url = new URL(linkToDelete.icon, window.location.origin);
             const key = url.searchParams.get('key');
             if (key) {
-              const platform = linkToDelete.iconType === 'upload-cloudflare' ? 'cloudflare' : 'edgeone';
-              fetch(`/api/upload?key=${encodeURIComponent(key)}&platform=${platform}`, {
+              fetch(`/api/upload?key=${encodeURIComponent(key)}&platform=edgeone`, {
                 method: 'DELETE',
                 headers: { 'x-auth-password': authToken || '' }
               }).catch(err => console.error('Failed to delete current icon:', err));
@@ -341,31 +324,14 @@ export function AppLayout() {
               console.error(e);
             }
           }
-          // 2. 清理 Cloudflare R2 历史图标
-          if (l.cloudflareR2Url && l.cloudflareR2Url.startsWith('/api/favicon?key=')) {
-            try {
-              const url = new URL(l.cloudflareR2Url, window.location.origin);
-              const key = url.searchParams.get('key');
-              if (key) {
-                fetch(`/api/upload?key=${encodeURIComponent(key)}&platform=cloudflare`, {
-                  method: 'DELETE',
-                  headers: { 'x-auth-password': authToken || '' }
-                }).catch(err => console.error('Failed to delete cloudflare historical icon during batch delete:', err));
-              }
-            } catch (e) {
-              console.error(e);
-            }
-          }
-          // 3. 兼容旧版本数据或当前图标
+          // 2. 清理当前图标
           if (l.icon && l.icon.startsWith('/api/favicon?key=') &&
-              l.icon !== l.edgeoneBlobUrl &&
-              l.icon !== l.cloudflareR2Url) {
+              l.icon !== l.edgeoneBlobUrl) {
             try {
               const url = new URL(l.icon, window.location.origin);
               const key = url.searchParams.get('key');
               if (key) {
-                const platform = l.iconType === 'upload-cloudflare' ? 'cloudflare' : 'edgeone';
-                fetch(`/api/upload?key=${encodeURIComponent(key)}&platform=${platform}`, {
+                fetch(`/api/upload?key=${encodeURIComponent(key)}&platform=edgeone`, {
                   method: 'DELETE',
                   headers: { 'x-auth-password': authToken || '' }
                 }).catch(err => console.error('Failed to delete current icon during batch delete:', err));

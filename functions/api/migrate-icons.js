@@ -72,8 +72,7 @@ export async function onRequest(context) {
 
         if (link.icon?.startsWith('/api/favicon?key=') ||
             link.icon?.startsWith('/api/favicon?domain=') ||
-            link.iconType === 'upload-edgeone' ||
-            link.iconType === 'upload-cloudflare') {
+            link.iconType === 'upload-edgeone') {
           skipped++;
           continue;
         }
@@ -81,8 +80,6 @@ export async function onRequest(context) {
         queue.push({ catId: cat.id, link, domain });
       }
     }
-
-    const isCloudflareR2 = (env.CLOUDNAV_R2 && typeof env.CLOUDNAV_R2.put === 'function') || env.UPLOAD_PLATFORM === 'cloudflare';
 
     for (let i = 0; i < queue.length; i += CONCURRENCY) {
       const batch = queue.slice(i, i + CONCURRENCY);
@@ -109,26 +106,18 @@ export async function onRequest(context) {
           const storageKey = `favicon:${domain}`;
           let storageOk = false;
 
-          if (isCloudflareR2 && env.CLOUDNAV_R2) {
-            const mime = detectMimeType(buffer);
-            await env.CLOUDNAV_R2.put(storageKey, buffer, {
-              httpMetadata: { contentType: mime, cacheControl: 'public, max-age=31536000' }
+          let getStore;
+          try {
+            const blobSdk = await import('@edgeone/pages-blob');
+            getStore = blobSdk.getStore;
+          } catch (e) {}
+
+          if (getStore) {
+            const store = getStore('favicons');
+            await store.set(storageKey, buffer, {
+              cacheControl: 'public, max-age=31536000'
             });
             storageOk = true;
-          } else {
-            let getStore;
-            try {
-              const blobSdk = await import('@edgeone/pages-blob');
-              getStore = blobSdk.getStore;
-            } catch (e) {}
-
-            if (getStore) {
-              const store = getStore('favicons');
-              await store.set(storageKey, buffer, {
-                cacheControl: 'public, max-age=31536000'
-              });
-              storageOk = true;
-            }
           }
 
           if (!storageOk) {

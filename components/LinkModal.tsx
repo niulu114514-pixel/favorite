@@ -30,9 +30,8 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
 
   const [customIconUrl, setCustomIconUrl] = useState('');
   const [edgeoneBlobUrl, setEdgeoneBlobUrl] = useState('');
-  const [cloudflareR2Url, setCloudflareR2Url] = useState('');
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetType: 'upload-edgeone' | 'upload-cloudflare') => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetType: 'upload-edgeone') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -50,7 +49,6 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
       const formData = new FormData();
       formData.append('file', file);
       formData.append('categoryName', categoryName);
-      formData.append('platform', targetType === 'upload-cloudflare' ? 'cloudflare' : 'edgeone');
 
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -68,11 +66,8 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
       const result = await response.json();
       if (result.success && result.url) {
         setIcon(result.url);
-        if (targetType === 'upload-edgeone') {
-          setEdgeoneBlobUrl(result.url);
-        } else {
-          setCloudflareR2Url(result.url);
-        }
+        setEdgeoneBlobUrl(result.url);
+        setIconType('upload-edgeone');
         toast.success('图标上传成功！');
       } else {
         throw new Error('未返回有效的图标地址');
@@ -85,7 +80,7 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
     }
   };
 
-  const handleConvertUrlToStorage = async (targetPlatform: 'edgeone' | 'cloudflare') => {
+  const handleConvertUrlToStorage = async () => {
     if (!icon || !icon.trim()) {
       toast.error('请先输入有效的图片 URL');
       return;
@@ -105,7 +100,6 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
       const formData = new FormData();
       formData.append('url', icon.trim());
       formData.append('categoryName', categoryName);
-      formData.append('platform', targetPlatform);
 
       const response = await fetch('/api/upload', {
         method: 'POST',
@@ -123,14 +117,9 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
       const result = await response.json();
       if (result.success && result.url) {
         setIcon(result.url);
-        if (targetPlatform === 'edgeone') {
-          setEdgeoneBlobUrl(result.url);
-          setIconType('upload-edgeone');
-        } else {
-          setCloudflareR2Url(result.url);
-          setIconType('upload-cloudflare');
-        }
-        toast.success(`转存到 ${targetPlatform === 'edgeone' ? 'EdgeOne Blob' : 'Cloudflare R2'} 成功！`);
+        setEdgeoneBlobUrl(result.url);
+        setIconType('upload-edgeone');
+        toast.success('转存到 EdgeOne Blob 成功！');
       } else {
         throw new Error('未返回有效的图标地址');
       }
@@ -154,7 +143,7 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
   
   // 当不支持上传时，将图标类型降级为默认
   useEffect(() => {
-    if (!supportsUpload && (iconType === 'upload-edgeone' || iconType === 'upload-cloudflare')) {
+    if (!supportsUpload && iconType === 'upload-edgeone') {
       setIconType('google');
       setIcon('');
     }
@@ -239,11 +228,9 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
         // 初始化历史记录状态
         const initialCustom = initialData.customIconUrl || (detectedType === 'customurl' ? initialData.icon : '') || '';
         const initialEdgeone = initialData.edgeoneBlobUrl || (detectedType === 'upload-edgeone' ? initialData.icon : '') || '';
-        const initialCloudflare = initialData.cloudflareR2Url || (detectedType === 'upload-cloudflare' ? initialData.icon : '') || '';
         
         setCustomIconUrl(initialCustom);
         setEdgeoneBlobUrl(initialEdgeone);
-        setCloudflareR2Url(initialCloudflare);
 
         if (initialData.iconType === 'customapi' && initialData.iconConfig) {
           setCustomApiUrl((initialData.iconConfig.customApiUrl as string) || '');
@@ -273,7 +260,6 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
         setIconType('google');
         setCustomIconUrl('');
         setEdgeoneBlobUrl('');
-        setCloudflareR2Url('');
         setCustomApiUrl('');
         setCustomApiParam('URL');
       }
@@ -354,8 +340,7 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
       iconType,
       iconConfig: iconType === 'customapi' ? { iconType, customApiUrl, customApiParam } : undefined,
       customIconUrl,
-      edgeoneBlobUrl,
-      cloudflareR2Url
+      edgeoneBlobUrl
     });
     
     // 如果有自定义图标URL，缓存到KV空间
@@ -551,8 +536,6 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
                       setIcon(customIconUrl);
                     } else if (newType === 'upload-edgeone') {
                       setIcon(edgeoneBlobUrl);
-                    } else if (newType === 'upload-cloudflare') {
-                      setIcon(cloudflareR2Url);
                     } else {
                       setIcon('');
                     }
@@ -564,7 +547,6 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
                   <option value="customurl">自定义图片URL</option>
                   <option value="customapi">自定义API</option>
                   {supportsUpload && <option value="upload-edgeone">上传到 Edgeone Pages Blob</option>}
-                  {supportsUpload && <option value="upload-cloudflare">上传到 Cloudflare R2</option>}
                 </select>
 
               {/* 图标输入框 - 根据类型显示不同界面 */}
@@ -587,18 +569,10 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
                       <button
                         type="button"
                         disabled={isUploading}
-                        onClick={() => handleConvertUrlToStorage('edgeone')}
+                        onClick={handleConvertUrlToStorage}
                         className="flex-1 py-1.5 px-3 rounded-lg text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
                       >
                         {isUploading ? '正在转存...' : '📥 转存到 EdgeOne Blob'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isUploading}
-                        onClick={() => handleConvertUrlToStorage('cloudflare')}
-                        className="flex-1 py-1.5 px-3 rounded-lg text-xs font-medium bg-purple-50 text-purple-600 border border-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-                      >
-                        {isUploading ? '正在转存...' : '📥 转存到 Cloudflare R2'}
                       </button>
                     </div>
                   )}
@@ -648,7 +622,7 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
                 </div>
               )}
 
-              {(iconType === 'upload-edgeone' || iconType === 'upload-cloudflare') && (
+              {iconType === 'upload-edgeone' && (
                 <div className="space-y-2">
                   <div className="flex gap-2 items-center">
                     <input
@@ -663,7 +637,7 @@ const LinkModal: React.FC<LinkModalProps> = ({ isOpen, onClose, onSave, onDelete
                       <input
                         type="file"
                         accept="image/*"
-                        onChange={(e) => handleFileUpload(e, iconType as 'upload-edgeone' | 'upload-cloudflare')}
+                        onChange={(e) => handleFileUpload(e, 'upload-edgeone')}
                         disabled={isUploading}
                         className="hidden"
                       />
