@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Cloud, Sun, CloudRain, CloudSnow, Wind } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Cloud, Sun, CloudRain, CloudSnow, Wind, RotateCw } from 'lucide-react';
 import { WeatherConfig } from '../types';
 
 interface WeatherDisplayProps {
@@ -22,12 +22,13 @@ const WeatherDisplay: React.FC<WeatherDisplayProps> = ({ config }) => {
     return <Sun className="w-4 h-4 text-yellow-500" />;
   };
 
-  useEffect(() => {
+  const fetchWeather = useCallback(async () => {
     if (!config || !config.enabled) return;
-
-    const fetchWeather = async () => {
-      setLoading(true);
-      try {
+    setLoading(true);
+    const startedAt = Date.now();
+    // 保证刷新时的加载态至少可见 600ms，让点击有明确反馈
+    const minLoading = 600;
+    try {
         if (config.provider === 'jinrishici') {
           const res = await fetch('https://v2.jinrishici.com/info');
           if (res.ok) {
@@ -75,14 +76,21 @@ const WeatherDisplay: React.FC<WeatherDisplayProps> = ({ config }) => {
       } catch (e) {
         console.error('Weather fetch error:', e);
       } finally {
-        setLoading(false);
+        const elapsed = Date.now() - startedAt;
+        const remaining = minLoading - elapsed;
+        if (remaining > 0) {
+          setTimeout(() => setLoading(false), remaining);
+        } else {
+          setLoading(false);
+        }
       }
-    };
-
+    });
+  useEffect(() => {
+    if (!config || !config.enabled) return;
     fetchWeather();
     const interval = setInterval(fetchWeather, 30 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [config]);
+  }, [fetchWeather, config]);
 
   if (!config || !config.enabled) return null;
 
@@ -99,11 +107,13 @@ const WeatherDisplay: React.FC<WeatherDisplayProps> = ({ config }) => {
 
   return (
     <div
-      className="relative flex items-center gap-2 bg-slate-200 dark:bg-slate-700 rounded-full px-3 py-2 h-9 min-w-10 leading-none cursor-default group"
+      className="relative flex items-center gap-2 bg-slate-200 dark:bg-slate-700 rounded-full px-3 py-2 h-9 min-w-10 leading-none cursor-pointer select-none group active:scale-95 transition-transform"
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
+      onClick={() => fetchWeather()}
+      title="点击刷新天气"
     >
-      {getWeatherIcon(weatherText)}
+      {loading ? <RotateCw className="w-4 h-4 text-slate-500 animate-spin" /> : getWeatherIcon(weatherText)}
       <span className="text-xs text-slate-700 dark:text-slate-300 whitespace-nowrap">
         {weatherText}
       </span>

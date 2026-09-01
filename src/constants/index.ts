@@ -4,7 +4,7 @@ export const APP_CONFIG = {
   name: '落花流水个人导航',
   version: '1.0.0',
   description: '现代化云端导航页面',
-  githubUrl: 'https://github.com/eallion/favorite-cloudflare',
+  githubUrl: 'https://github.com/niulu114514-pixel/favorite',
 } as const
 
 export const STORAGE_KEYS = {

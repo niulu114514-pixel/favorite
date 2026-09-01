@@ -67,7 +67,7 @@ export function useSearch() {
     const q = searchQuery.toLowerCase();
     
     // 创建分类权重映射
-    const categoryWeightMap = new Map(categories.map(c => [c.id, c.weight || 0]));
+    const categoryWeightMap = new Map<string, number>(categories.map(c => [c.id, c.weight || 0]));
 
     return links
       .filter(l =>

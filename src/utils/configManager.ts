@@ -171,7 +171,7 @@ class ConfigManager {
    */
   updateViewMode(mode: 'compact' | 'detailed', isDefault: boolean = false): void {
     if (!this.config.view) {
-      this.config.view = {};
+      this.config.view = { mode };
     }
 
     if (isDefault) {

@@ -409,3 +409,59 @@ section[data-category-section] {
   content-visibility: auto;
   contain-intrinsic-size: auto 320px;
 }
+
+/* ===== 设置面板卡片化分组 ===== */
+.settings-body section {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 1.1rem 1.25rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  transition: border-color 0.2s ease;
+}
+.settings-body section:hover {
+  border-color: #cbd5e1;
+}
+.settings-body section > h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: #0f172a;
+  padding-bottom: 0.875rem;
+  margin-bottom: 0.875rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+.settings-body section > h4 svg {
+  color: #3b82f6;
+  flex-shrink: 0;
+}
+
+html.dark .settings-body section {
+  background: rgba(37, 45, 58, 0.5);
+  border: 1px solid #30363d;
+  box-shadow: none;
+}
+html.dark .settings-body section:hover {
+  border-color: #444c56;
+}
+html.dark .settings-body section > h4 {
+  color: #c9d1d9;
+  border-bottom-color: #30363d;
+}
+html.dark .settings-body section > h4 svg {
+  color: #58a6ff;
+}
+
+/* 设置面板内部次级标签分组 */
+.settings-body .sub-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.625rem;
+  padding: 0.875rem 1rem;
+}
+html.dark .settings-body .sub-card {
+  background: rgba(51, 65, 85, 0.4);
+  border-color: #30363d;
+}

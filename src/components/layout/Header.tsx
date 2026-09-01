@@ -338,7 +338,7 @@ export function Header({
 
           {/* GitHub link */}
           <a
-            href="https://github.com/eallion/favorite"
+            href="https://github.com/niulu114514-pixel/favorite"
             target="_blank"
             rel="noopener noreferrer"
             className={`${isMobileSearchOpen ? 'hidden' : 'flex'} items-center justify-center p-2 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 h-[36px] min-w-[36px] cursor-pointer transition-colors`}
@@ -529,8 +529,11 @@ function HeaderSearch({
         className={`flex items-center rounded-full h-9 transition-all duration-300 ease-in-out w-full ${
           isExpanded 
             ? 'bg-slate-200 dark:bg-slate-700 px-3 shadow-sm border border-slate-200 dark:border-slate-600' 
-            : 'bg-slate-200 dark:bg-slate-700 justify-center cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-600'
+            : 'bg-slate-200 dark:bg-slate-700 justify-center cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-600 active:scale-95'
         }`}
+        role="button"
+        aria-label="展开搜索"
+        title={isExpanded ? undefined : '点击展开搜索'}
         onClick={() => {
           if (!isExpanded) {
             handleExpand();
