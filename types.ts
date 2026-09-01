@@ -218,9 +218,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
 ];
 
 export const INITIAL_LINKS: LinkItem[] = [
-  { id: 'init1', title: '博客 Blog', url: 'https://www.eallion.com/', icon: '/favicons/eallion.png', description: '大大的小蜗牛的个人生活博客', categoryId: 'common', createdAt: Date.now(), pinned: true, pinnedOrder: 0 },
-  { id: 'init2', title: 'Mastodon e5n.cc', url: 'https://e5n.cc/@eallion', icon: '/favicons/mastodon.svg', description: 'Charles Chin\'s personal Mastodon.', categoryId: 'common', createdAt: Date.now(), pinned: true, pinnedOrder: 1 },
-  { id: 'init3', title: 'Twitter 𝕏', url: 'https://x.com/eallion', icon: '/favicons/x.svg', description: 'Blaze your glory!', categoryId: 'common', createdAt: Date.now() },
-  { id: 'init4', title: 'GitHub', url: 'https://github.com/eallion', icon: '/favicons/github.svg', description: 'Build and ship software on a single, collaborative platform', categoryId: 'common', createdAt: Date.now() },
-  { id: 'init5', title: 'Cloudflare', url: 'https://dash.cloudflare.com/', icon: '/favicons/cloudflare.svg', description: 'Connect, protect, and build everywhere', categoryId: 'common', createdAt: Date.now() },
+  { id: 'init1', title: 'X', url: 'https://x.com/', icon: '/favicons/x.svg', description: 'Blaze your glory!', categoryId: 'common', createdAt: Date.now() },
+  { id: 'init2', title: 'GitHub', url: 'https://github.com', icon: '/favicons/github.svg', description: 'Build and ship software on a single, collaborative platform', categoryId: 'common', createdAt: Date.now() },
+  { id: 'init3', title: 'Cloudflare', url: 'https://dash.cloudflare.com/', icon: '/favicons/cloudflare.svg', description: 'Connect, protect, and build everywhere', categoryId: 'common', createdAt: Date.now() },
 ];
