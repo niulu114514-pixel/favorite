@@ -2,6 +2,7 @@ import { getCorsHeaders, getKV, jsonResponse, verifyAuth } from './_kvAdapter.js
 
 const PROTOCOL_VERSION = '2025-03-26';
 const SERVER_INFO = { name: 'CloudNav MCP', version: '1.0.0' };
+const MAX_MESSAGES_PER_REQUEST = 20;
 
 const TOOLS = [
   {
@@ -124,6 +125,20 @@ async function writeCategoryLinks(kv, categoryId, links) {
   else await kv.delete(`links:${categoryId}`);
 }
 
+function sanitizeLinkFields(args) {
+  const out = {};
+  if (args.title !== undefined) out.title = String(args.title).trim().slice(0, 200);
+  if (args.url !== undefined) {
+    const raw = String(args.url).trim().slice(0, 2048);
+    if (!raw) return out;
+    out.url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  }
+  if (args.description !== undefined) out.description = String(args.description).slice(0, 500);
+  if (args.icon !== undefined) out.icon = String(args.icon).slice(0, 1000);
+  if (args.pinned !== undefined) out.pinned = Boolean(args.pinned);
+  return out;
+}
+
 function makeId() {
   return typeof globalThis.crypto?.randomUUID === 'function'
     ? globalThis.crypto.randomUUID()
@@ -172,19 +187,18 @@ async function callTool(name, args, kv, authenticated) {
   if (!authenticated) return textResult('Authentication is required for write operations.', true);
 
   if (name === 'add_link') {
-    const title = String(args.title || '').trim();
-    const url = String(args.url || '').trim();
-    if (!title || !url) return textResult('title and url are required.', true);
+    const fields = sanitizeLinkFields(args);
+    if (!fields.title || !fields.url) return textResult('title and url are required.', true);
     const categoryId = categories.some(category => category.id === args.categoryId)
       ? args.categoryId
       : 'common';
     const link = {
       id: makeId(),
-      title,
-      url: /^https?:\/\//i.test(url) ? url : `https://${url}`,
-      description: String(args.description || ''),
+      title: fields.title,
+      url: fields.url,
+      description: fields.description || '',
       categoryId,
-      icon: args.icon || undefined,
+      icon: fields.icon,
       pinned: Boolean(args.pinned),
       createdAt: Date.now(),
     };
@@ -201,9 +215,7 @@ async function callTool(name, args, kv, authenticated) {
       : current.categoryId;
     const updated = {
       ...current,
-      ...Object.fromEntries(
-        ['title', 'url', 'description', 'icon', 'pinned'].filter(key => args[key] !== undefined).map(key => [key, args[key]])
-      ),
+      ...sanitizeLinkFields(args),
       categoryId: nextCategoryId,
     };
     const source = await readCategoryLinks(kv, current.categoryId);
@@ -288,6 +300,9 @@ export async function onRequest(context) {
 
   const kv = getKV(env);
   const messages = Array.isArray(body) ? body : [body];
+  if (messages.length > MAX_MESSAGES_PER_REQUEST) {
+    return responseFor(rpcError(null, -32600, 'Too many messages in one request.'), request, headers);
+  }
   const results = (await Promise.all(messages.map(message => handleMessage(message, request, env, kv)))).filter(Boolean);
   if (!results.length) return new Response(null, { status: 202, headers });
   return responseFor(Array.isArray(body) ? results : results[0], request, headers);

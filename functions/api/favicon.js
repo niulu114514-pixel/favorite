@@ -10,6 +10,30 @@ const UPSTREAM_PROVIDERS = [
   (domain) => `https://www.faviconextractor.com/favicon/${domain}?larger=true`,
 ];
 
+const UPSTREAM_TIMEOUT_MS = 10_000;
+const MAX_FAVICON_BYTES = 512 * 1024;
+
+async function fetchUpstreamIcon(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const declared = Number(res.headers.get('content-length') || 0);
+    if (declared > MAX_FAVICON_BYTES) return null;
+    const buffer = await res.arrayBuffer();
+    if (buffer.byteLength === 0 || buffer.byteLength > MAX_FAVICON_BYTES) return null;
+    return buffer;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // 通过文件头魔数识别 MIME 类型
 function detectMimeType(arrayBuffer) {
   const uint8 = new Uint8Array(arrayBuffer);
@@ -139,16 +163,10 @@ export async function onRequest(context) {
   // 2. 如果是 domain 请求且无缓存，则从上游抓取并保存
   let buffer = null;
   for (const getUrl of UPSTREAM_PROVIDERS) {
-    try {
-      const res = await fetch(getUrl(domain), {
-        headers: { 'User-Agent': 'Mozilla/5.0' }
-      });
-      if (res.ok) {
-        buffer = await res.arrayBuffer();
-        break;
-      }
-    } catch (e) {
-      console.warn(`Fetch error for ${domain}:`, e);
+    const candidate = await fetchUpstreamIcon(getUrl(domain));
+    if (candidate) {
+      buffer = candidate;
+      break;
     }
   }
 

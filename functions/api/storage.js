@@ -9,6 +9,8 @@ const STORAGE_KEYS = {
   CATEGORIES_CONFIG_KEY: 'cate_config',
 }
 
+const MAX_POST_BODY_BYTES = 5 * 1024 * 1024
+
 const CONFIG_SECTIONS = ['ai', 'website', 'mastodon', 'weather', 'search', 'icon', 'view', 'ui']
 
 function requestCredential(request) {
@@ -266,20 +268,11 @@ export async function onRequest(context) {
 
     // ==================== POST ====================
     if (request.method === 'POST') {
-      const body = await request.json()
-      const readOnlyOperations = ['favicon']
-
-      // 无需认证的操作
-      if (readOnlyOperations.includes(body.operation) || body.saveConfig === 'favicon') {
-        if (body.saveConfig === 'favicon') {
-          const { domain, icon } = body
-          if (!domain || !icon) {
-            return jsonResponse({ error: 'Domain and icon are required' }, 400, corsHeaders)
-          }
-          await kv.put(`favicon:${domain}`, icon, { expirationTtl: 30 * 24 * 60 * 60 })
-          return jsonResponse({ success: true }, 200, corsHeaders)
-        }
+      const contentLength = Number(request.headers.get('content-length') || 0)
+      if (contentLength > MAX_POST_BODY_BYTES) {
+        return jsonResponse({ error: 'Payload is too large' }, 413, corsHeaders)
       }
+      const body = await request.json()
 
       // 认证检查
       const providedPassword = request.headers.get('x-auth-password')
@@ -296,6 +289,16 @@ export async function onRequest(context) {
       // 仅验证密码
       if (body.authOnly) {
         await kv.put('last_auth_time', Date.now().toString())
+        return jsonResponse({ success: true }, 200, corsHeaders)
+      }
+
+      // 保存 favicon 缓存
+      if (body.saveConfig === 'favicon') {
+        const { domain, icon } = body
+        if (!domain || !icon) {
+          return jsonResponse({ error: 'Domain and icon are required' }, 400, corsHeaders)
+        }
+        await kv.put(`favicon:${domain}`, icon, { expirationTtl: 30 * 24 * 60 * 60 })
         return jsonResponse({ success: true }, 200, corsHeaders)
       }
 

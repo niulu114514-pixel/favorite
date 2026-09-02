@@ -4,10 +4,7 @@ import {
   Bookmark,
   Check,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
   Folder,
-  GripVertical,
   Grid2X2,
   LayoutList,
   LogIn,
@@ -52,8 +49,15 @@ const aiBusy = ref(false)
 const aiError = ref('')
 const searchInput = ref<HTMLInputElement>()
 const activeCategoryId = ref('')
-const draggedCategoryId = ref<string | null>(null)
-const dragOverCategoryId = ref<string | null>(null)
+const LONG_PRESS_MS = 450
+const PRESS_MOVE_TOLERANCE = 12
+const dragCategoryId = ref<string | null>(null)
+const dragHoverId = ref<string | null>(null)
+let pressedCategoryId: string | null = null
+let pressTimer: number | undefined
+let pressStartX = 0
+let pressStartY = 0
+let suppressCategoryClick = false
 const collapsedCategoryIds = ref<Set<string>>(loadCollapsedCategoryIds())
 const faviconCache = new Map<string, string>()
 const searchTextCache = new WeakMap<LinkItem, string>()
@@ -102,10 +106,6 @@ function categoryChildren(categoryId: string) {
   return childCategories.value.get(categoryId) || []
 }
 
-function categorySiblings(category: Category) {
-  return category.parentId ? categoryChildren(category.parentId) : topLevelCategories.value
-}
-
 function loadCollapsedCategoryIds() {
   try {
     const value = JSON.parse(localStorage.getItem('cloudnav_collapsed_categories') || '[]')
@@ -129,6 +129,10 @@ function toggleCategoryExpanded(event: Event, categoryId: string) {
 }
 
 function handleCategoryClick(event: MouseEvent, category: Category) {
+  if (suppressCategoryClick) {
+    suppressCategoryClick = false
+    return
+  }
   if (categoryChildren(category.id).length) {
     toggleCategoryExpanded(event, category.id)
     return
@@ -172,9 +176,12 @@ function categoryLinks(categoryId: string) {
 function categoryCount(category: Category) {
   const direct = categoryLinks(category.id).length
   if (category.parentId) return direct
-  return direct + categoryChildren(category.id).reduce((total, child) => {
-    return total + categoryLinks(child.id).length
-  }, 0)
+  return (
+    direct +
+    categoryChildren(category.id).reduce((total, child) => {
+      return total + categoryLinks(child.id).length
+    }, 0)
+  )
 }
 
 function applyTheme() {
@@ -209,29 +216,90 @@ function jumpTo(id: string) {
   sidebarOpen.value = false
 }
 
-function startCategoryDrag(event: DragEvent, id: string) {
-  event.stopPropagation()
-  draggedCategoryId.value = id
-  dragOverCategoryId.value = id
-  if (event.dataTransfer) {
-    event.dataTransfer.setData('text/plain', id)
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.dropEffect = 'move'
+function startCategoryPress(event: PointerEvent, category: Category) {
+  if (dragCategoryId.value) return
+  if (event.pointerType === 'mouse' && event.button !== 0) return
+  pressedCategoryId = category.id
+  pressStartX = event.clientX
+  pressStartY = event.clientY
+  suppressCategoryClick = false
+  clearPressTimer()
+  pressTimer = window.setTimeout(() => activateCategoryDrag(category.id), LONG_PRESS_MS)
+  window.addEventListener('pointermove', cancelPressOnMove)
+  window.addEventListener('pointerup', cancelCategoryPress)
+  window.addEventListener('pointercancel', cancelCategoryPress)
+}
+
+function activateCategoryDrag(id: string) {
+  clearPressTimer()
+  if (!pressedCategoryId) return
+  window.removeEventListener('pointermove', cancelPressOnMove)
+  dragCategoryId.value = id
+  dragHoverId.value = null
+  suppressCategoryClick = true
+  document.body.classList.add('sorting-categories')
+  window.addEventListener('pointermove', updateCategoryDragHover)
+  window.addEventListener('pointerup', finishCategoryDrag)
+  window.addEventListener('pointercancel', cancelCategoryDragSession)
+  window.addEventListener('blur', cancelCategoryDragSession)
+}
+
+function cancelPressOnMove(event: PointerEvent) {
+  if (!pressedCategoryId) return
+  const distance = Math.hypot(event.clientX - pressStartX, event.clientY - pressStartY)
+  if (distance > PRESS_MOVE_TOLERANCE) cancelCategoryPress()
+}
+
+function cancelCategoryPress() {
+  clearPressTimer()
+  pressedCategoryId = null
+  window.removeEventListener('pointermove', cancelPressOnMove)
+  window.removeEventListener('pointerup', cancelCategoryPress)
+  window.removeEventListener('pointercancel', cancelCategoryPress)
+}
+
+function updateCategoryDragHover(event: PointerEvent) {
+  const element = document.elementFromPoint(event.clientX, event.clientY)
+  const dropTarget = element?.closest('[data-sort-category]') as HTMLElement | null
+  const candidate = dropTarget?.dataset.sortCategory ?? null
+  if (!candidate || !dragCategoryId.value || candidate === dragCategoryId.value) {
+    dragHoverId.value = null
+    return
   }
+  const dragged = categoryMap.value.get(dragCategoryId.value)
+  const target = categoryMap.value.get(candidate)
+  const valid = dragged && target && (dragged.parentId || '') === (target.parentId || '')
+  dragHoverId.value = valid ? candidate : null
 }
 
-function setCategoryDragOver(id: string) {
-  if (draggedCategoryId.value && draggedCategoryId.value !== id) dragOverCategoryId.value = id
+async function finishCategoryDrag(event: PointerEvent) {
+  const draggedId = dragCategoryId.value
+  cancelCategoryDragSession()
+  if (!draggedId) return
+  const element = document.elementFromPoint(event.clientX, event.clientY)
+  const dropTarget = element?.closest('[data-sort-category]') as HTMLElement | null
+  const targetId = dropTarget?.dataset.sortCategory
+  if (!targetId || targetId === draggedId) return
+  const orderedIds = reorderCategoryLevel(draggedId, targetId)
+  if (orderedIds) await nav.reorderCategories(orderedIds)
 }
 
-async function dropCategory(id: string) {
-  const draggedId = draggedCategoryId.value
-  try {
-    if (!draggedId || draggedId === id) return
-    const orderedIds = reorderCategoryLevel(draggedId, id)
-    if (orderedIds) await nav.reorderCategories(orderedIds)
-  } finally {
-    endCategoryDrag()
+function cancelCategoryDragSession() {
+  cancelCategoryPress()
+  if (!dragCategoryId.value) return
+  dragCategoryId.value = null
+  dragHoverId.value = null
+  document.body.classList.remove('sorting-categories')
+  window.removeEventListener('pointermove', updateCategoryDragHover)
+  window.removeEventListener('pointerup', finishCategoryDrag)
+  window.removeEventListener('pointercancel', cancelCategoryDragSession)
+  window.removeEventListener('blur', cancelCategoryDragSession)
+}
+
+function clearPressTimer() {
+  if (pressTimer) {
+    window.clearTimeout(pressTimer)
+    pressTimer = undefined
   }
 }
 
@@ -243,9 +311,7 @@ function reorderCategoryLevel(draggedId: string, targetId: string) {
   const parentId = dragged.parentId || ''
   if ((target.parentId || '') !== parentId) return null
 
-  const siblings = parentId
-    ? [...categoryChildren(parentId)]
-    : [...topLevelCategories.value]
+  const siblings = parentId ? [...categoryChildren(parentId)] : [...topLevelCategories.value]
   const from = siblings.findIndex(category => category.id === draggedId)
   const to = siblings.findIndex(category => category.id === targetId)
   if (from < 0 || to < 0) return null
@@ -267,37 +333,6 @@ function reorderCategoryLevel(draggedId: string, targetId: string) {
     if (!seen.has(category.id)) ordered.push(category.id)
   }
   return ordered
-}
-
-function endCategoryDrag() {
-  draggedCategoryId.value = null
-  dragOverCategoryId.value = null
-}
-
-async function moveCategoryByKeyboard(event: KeyboardEvent, id: string) {
-  if (!event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return
-  event.preventDefault()
-  const category = categoryMap.value.get(id)
-  if (!category) return
-  await moveCategoryByStep(id, event.key === 'ArrowUp' ? -1 : 1)
-}
-
-async function moveCategoryByStep(id: string, direction: -1 | 1) {
-  const category = categoryMap.value.get(id)
-  if (!category) return
-  const siblings = categorySiblings(category)
-  const index = siblings.findIndex(item => item.id === id)
-  const nextIndex = index + direction
-  const target = siblings[nextIndex]
-  if (!target) return
-  const orderedIds = reorderCategoryLevel(id, target.id)
-  if (!orderedIds) return
-  await nav.reorderCategories(orderedIds)
-  activeCategoryId.value = id
-}
-
-function cancelCategoryDrag() {
-  if (draggedCategoryId.value) endCategoryDrag()
 }
 
 function openLinkModal(link?: LinkItem) {
@@ -400,6 +435,17 @@ function favicon(link: LinkItem) {
   }
 }
 
+function safeTargetUrl(url: string) {
+  try {
+    const parsed = new URL(url, window.location.origin)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+      ? parsed.href
+      : `${window.location.origin}/`
+  } catch {
+    return `${window.location.origin}/`
+  }
+}
+
 function fallbackIcon(event: Event, link: LinkItem) {
   const image = event.target as HTMLImageElement
   const fallback = fallbackIconUrl(link.url)
@@ -445,14 +491,11 @@ onMounted(async () => {
     history.replaceState({}, '', location.pathname)
   }
   window.addEventListener('keydown', handleGlobalKeydown)
-  window.addEventListener('dragend', cancelCategoryDrag)
-  window.addEventListener('drop', cancelCategoryDrag)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
-  window.removeEventListener('dragend', cancelCategoryDrag)
-  window.removeEventListener('drop', cancelCategoryDrag)
+  cancelCategoryDragSession()
 })
 </script>
 
@@ -469,94 +512,69 @@ onBeforeUnmount(() => {
         <template v-for="category in topLevelCategories" :key="category.id">
           <div class="category-nav-item">
             <button
-            type="button"
-            :aria-current="activeCategoryId === category.id ? 'location' : undefined"
-            :aria-expanded="
-              categoryChildren(category.id).length ? isCategoryExpanded(category.id) : undefined
-            "
-            :title="'拖动调整分类顺序（Alt+↑/↓）'"
-            :class="{
-              active: activeCategoryId === category.id,
-              dragging: draggedCategoryId === category.id,
-              'drag-over': dragOverCategoryId === category.id && draggedCategoryId !== category.id,
-            }"
-            @dragenter.prevent="setCategoryDragOver(category.id)"
-            @dragover.prevent="setCategoryDragOver(category.id)"
-            @drop.prevent="dropCategory(category.id)"
-            @keydown="moveCategoryByKeyboard($event, category.id)"
-            @click="handleCategoryClick($event, category)"
-          >
-            <span
-              class="drag-handle"
-              draggable="true"
-              aria-hidden="true"
-              @dragstart="startCategoryDrag($event, category.id)"
-              @dragend="endCategoryDrag"
-              @click.stop
-              ><GripVertical :size="15" aria-hidden="true"
-            /></span>
-            <Folder :size="17" /><span>{{ category.name }}</span
-            ><span
-              v-if="categoryChildren(category.id).length"
-              class="category-toggle"
-              role="button"
-              tabindex="0"
-              :aria-label="isCategoryExpanded(category.id) ? '收起二级分类' : '展开二级分类'"
-              @click.stop="toggleCategoryExpanded($event, category.id)"
-              @keydown.enter.stop="toggleCategoryExpanded($event, category.id)"
-              @keydown.space.prevent.stop="toggleCategoryExpanded($event, category.id)"
-              ><ChevronRight
-                :size="15"
-                :class="{ expanded: isCategoryExpanded(category.id) }" /></span
-            ><ChevronRight v-else :size="15" />
+              type="button"
+              :data-sort-category="category.id"
+              :aria-current="activeCategoryId === category.id ? 'location' : undefined"
+              :aria-expanded="
+                categoryChildren(category.id).length ? isCategoryExpanded(category.id) : undefined
+              "
+              :title="'长按拖动可调整分类顺序'"
+              :class="{
+                active: activeCategoryId === category.id,
+                dragging: dragCategoryId === category.id,
+                'drag-hover':
+                  dragHoverId === category.id &&
+                  dragCategoryId !== null &&
+                  dragCategoryId !== category.id,
+              }"
+              @contextmenu.prevent
+              @pointerdown="startCategoryPress($event, category)"
+              @pointerup="cancelCategoryPress"
+              @pointercancel="cancelCategoryPress"
+              @click="handleCategoryClick($event, category)"
+            >
+              <Folder :size="17" /><span>{{ category.name }}</span
+              ><span
+                v-if="categoryChildren(category.id).length"
+                class="category-toggle"
+                role="button"
+                tabindex="0"
+                :aria-label="isCategoryExpanded(category.id) ? '收起二级分类' : '展开二级分类'"
+                @pointerdown.stop
+                @click.stop="toggleCategoryExpanded($event, category.id)"
+                @keydown.enter.stop="toggleCategoryExpanded($event, category.id)"
+                @keydown.space.prevent.stop="toggleCategoryExpanded($event, category.id)"
+                ><ChevronRight
+                  :size="15"
+                  :class="{ expanded: isCategoryExpanded(category.id) }" /></span
+              ><ChevronRight v-else :size="15" />
             </button>
-            <div v-if="categorySiblings(category).length > 1" class="category-reorder" aria-label="移动分类">
-              <button type="button" aria-label="分类上移" @click="moveCategoryByStep(category.id, -1)">
-                <ChevronUp :size="13" />
-              </button>
-              <button type="button" aria-label="分类下移" @click="moveCategoryByStep(category.id, 1)">
-                <ChevronDown :size="13" />
-              </button>
-            </div>
           </div>
           <template v-for="child in categoryChildren(category.id)" :key="child.id">
             <div v-if="isCategoryExpanded(category.id)" class="category-nav-item">
               <button
-              type="button"
-              class="subcategory"
-              :aria-current="activeCategoryId === child.id ? 'location' : undefined"
-              :title="'拖动调整分类顺序（Alt+↑/↓）'"
-              :class="{
-                active: activeCategoryId === child.id,
-                dragging: draggedCategoryId === child.id,
-                'drag-over': dragOverCategoryId === child.id && draggedCategoryId !== child.id,
-              }"
-              @dragenter.prevent="setCategoryDragOver(child.id)"
-              @dragover.prevent="setCategoryDragOver(child.id)"
-              @drop.prevent="dropCategory(child.id)"
-              @keydown="moveCategoryByKeyboard($event, child.id)"
-              @click="jumpTo(child.id)"
-            >
-              <span
-                class="drag-handle"
-                draggable="true"
-                aria-hidden="true"
-                @dragstart="startCategoryDrag($event, child.id)"
-                @dragend="endCategoryDrag"
-                @click.stop
-                ><GripVertical :size="15" aria-hidden="true"
-              /></span>
-              <Folder :size="16" /><span>{{ child.name }}</span
-              ><ChevronRight :size="15" />
+                type="button"
+                class="subcategory"
+                :data-sort-category="child.id"
+                :aria-current="activeCategoryId === child.id ? 'location' : undefined"
+                :title="'长按拖动可调整分类顺序'"
+                :class="{
+                  active: activeCategoryId === child.id,
+                  dragging: dragCategoryId === child.id,
+                  'drag-hover':
+                    dragHoverId === child.id &&
+                    dragCategoryId !== null &&
+                    dragCategoryId !== child.id,
+                }"
+                @contextmenu.prevent
+                @pointerdown="startCategoryPress($event, child)"
+                @pointerup="cancelCategoryPress"
+                @pointercancel="cancelCategoryPress"
+                @click="jumpTo(child.id)"
+              >
+                <Folder :size="16" /><span>{{ child.name }}</span
+                ><ChevronRight :size="15" />
               </button>
-              <div v-if="categorySiblings(child).length > 1" class="category-reorder" aria-label="移动分类">
-                <button type="button" aria-label="分类上移" @click="moveCategoryByStep(child.id, -1)">
-                  <ChevronUp :size="13" />
-                </button>
-                <button type="button" aria-label="分类下移" @click="moveCategoryByStep(child.id, 1)">
-                  <ChevronDown :size="13" />
-                </button>
-              </div>
             </div>
           </template>
         </template>
@@ -658,7 +676,7 @@ onBeforeUnmount(() => {
                   compact,
                 ]"
                 class="link-card"
-                :href="link.url"
+                :href="safeTargetUrl(link.url)"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -682,7 +700,9 @@ onBeforeUnmount(() => {
           <template v-for="category in orderedCategories" :key="category.id">
             <section
               v-if="
-                (!category.parentId || isCategoryExpanded(category.parentId) || searchQuery.trim()) &&
+                (!category.parentId ||
+                  isCategoryExpanded(category.parentId) ||
+                  searchQuery.trim()) &&
                 (!searchQuery.trim() || categoryLinks(category.id).length)
               "
               :id="`category-${category.id}`"
@@ -731,7 +751,12 @@ onBeforeUnmount(() => {
                   ]"
                   class="link-card-wrap"
                 >
-                  <a class="link-card" :href="link.url" target="_blank" rel="noopener noreferrer">
+                  <a
+                    class="link-card"
+                    :href="safeTargetUrl(link.url)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     <img
                       :src="favicon(link)"
                       alt=""
@@ -993,10 +1018,8 @@ onBeforeUnmount(() => {
   overscroll-behavior: contain;
 }
 .category-nav-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 4px;
+  display: flex;
+  align-items: stretch;
 }
 .category-nav-item > button:first-child {
   width: auto;
@@ -1047,18 +1070,28 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 .category-nav button.dragging {
-  opacity: 0.45;
+  opacity: 0.5;
 }
-.category-nav button.drag-over {
+.category-nav button.drag-hover {
   border-color: rgba(79, 124, 255, 0.7);
-  box-shadow: inset 0 2px 0 #4f7cff;
+  box-shadow:
+    inset 0 2px 0 #4f7cff,
+    0 0 0 1px rgba(79, 124, 255, 0.35);
 }
-.drag-handle {
-  flex: 0 0 auto;
-  display: grid;
-  color: #a2adbd;
-  cursor: grab;
+.category-nav,
+.category-nav button {
+  -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+:global(body.sorting-categories) {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: grabbing;
+}
+:global(body.sorting-categories) * {
+  cursor: grabbing;
 }
 .category-toggle {
   width: 22px;
@@ -1077,34 +1110,6 @@ onBeforeUnmount(() => {
 }
 .category-toggle svg.expanded {
   transform: rotate(90deg);
-}
-.category-reorder {
-  display: none;
-  flex: 0 0 auto !important;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-}
-.category-reorder button {
-  flex: 0 0 auto !important;
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: 5px;
-  color: #8996aa;
-  background: transparent;
-  border: 0;
-}
-.category-reorder button:hover,
-.category-reorder button:focus-visible {
-  outline: none;
-  background: rgba(79, 124, 255, 0.15);
-  color: #315ed5;
-}
-.category-nav button:active .drag-handle {
-  cursor: grabbing;
 }
 .sidebar-footer {
   padding: 12px 10px;
@@ -1592,9 +1597,6 @@ html.dark .category-nav button.active {
   color: #d8e3ff;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
 }
-html.dark .drag-handle {
-  color: #77849a;
-}
 html.dark .brand,
 html.dark .sidebar-footer {
   border-color: rgba(172, 194, 230, 0.16);
@@ -1689,9 +1691,6 @@ html.dark .secondary-button {
   }
   .category-section {
     margin-bottom: 28px;
-  }
-  .category-reorder {
-    display: inline-flex;
   }
 }
 </style>

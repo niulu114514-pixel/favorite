@@ -141,12 +141,12 @@ export function useCloudNav() {
     )
   }
 
-  function persist() {
+  function persist(): Promise<void> | undefined {
     saveLocal()
-    if (!token.value) return
+    if (!token.value) return undefined
     syncRevision += 1
     syncStatus.value = 'saving'
-    if (syncPromise) return
+    if (syncPromise) return syncPromise
 
     syncPromise = (async () => {
       try {
@@ -169,6 +169,7 @@ export function useCloudNav() {
         syncPromise = null
       }
     })()
+    return syncPromise
   }
 
   async function login(password: string) {
@@ -298,7 +299,7 @@ export function useCloudNav() {
   }
 
   async function saveConfigBatch(configs: Record<string, unknown>) {
-    if (!token.value) throw new Error('璇峰厛鐧诲綍')
+    if (!token.value) throw new Error('请先登录')
     const response = await fetchWithTimeout('/api/storage', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-auth-password': token.value },

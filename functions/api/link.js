@@ -3,6 +3,15 @@
 
 import { getKV, getCorsHeaders, verifyAuth, jsonResponse } from './_kvAdapter.js';
 
+const MAX_BODY_BYTES = 100 * 1024;
+const MAX_FIELD_LENGTH = { title: 200, url: 2048, description: 500 };
+
+function makeId() {
+  return typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
   const corsHeaders = getCorsHeaders(env);
@@ -29,10 +38,23 @@ export async function onRequest(context) {
 
   try {
     const kv = getKV(env);
+
+    const contentLength = Number(request.headers.get('content-length') || 0);
+    if (contentLength > MAX_BODY_BYTES) {
+      return jsonResponse({ error: 'Payload is too large' }, 413, corsHeaders);
+    }
     const newLinkData = await request.json();
 
     if (!newLinkData.title || !newLinkData.url) {
       return jsonResponse({ error: 'Missing title or url' }, 400, corsHeaders);
+    }
+    for (const field of Object.keys(MAX_FIELD_LENGTH)) {
+      if (
+        typeof newLinkData[field] === 'string' &&
+        newLinkData[field].length > MAX_FIELD_LENGTH[field]
+      ) {
+        return jsonResponse({ error: `Field "${field}" is too long` }, 400, corsHeaders);
+      }
     }
 
     // 读取分类配置
@@ -78,7 +100,7 @@ export async function onRequest(context) {
 
     // 创建链接对象
     const newLink = {
-      id: Date.now().toString(),
+      id: makeId(),
       title: newLinkData.title,
       url: newLinkData.url,
       description: newLinkData.description || '',

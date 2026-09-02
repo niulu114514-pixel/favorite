@@ -10,14 +10,11 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
         open: true,
+        allowedHosts: ['.monkeycode-ai.online'],
       },
       plugins: [
         vue(),
       ],
-      // define: {
-      //   // 移除API密钥暴露到前端的配置
-      //   // API密钥应该只在后端使用
-      // },
       resolve: {
         alias: {
           '@': path.resolve(__dirname, './src'),

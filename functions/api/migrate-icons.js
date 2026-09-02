@@ -7,6 +7,30 @@ const UPSTREAM_PROVIDERS = [
 
 const CONCURRENCY = 3;
 
+const UPSTREAM_TIMEOUT_MS = 10_000;
+const MAX_FAVICON_BYTES = 512 * 1024;
+
+async function fetchUpstreamIcon(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const declared = Number(res.headers.get('content-length') || 0);
+    if (declared > MAX_FAVICON_BYTES) return null;
+    const buffer = await res.arrayBuffer();
+    if (buffer.byteLength === 0 || buffer.byteLength > MAX_FAVICON_BYTES) return null;
+    return buffer;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function detectMimeType(arrayBuffer) {
   const uint8 = new Uint8Array(arrayBuffer);
   if (uint8.length >= 8 && uint8[0] === 0x89 && uint8[1] === 0x50 && uint8[2] === 0x4E && uint8[3] === 0x47) return 'image/png';
@@ -87,15 +111,11 @@ export async function onRequest(context) {
         try {
           let buffer = null;
           for (const getUrl of UPSTREAM_PROVIDERS) {
-            try {
-              const res = await fetch(getUrl(domain), {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
-              });
-              if (res.ok) {
-                buffer = await res.arrayBuffer();
-                if (buffer.byteLength > 0) break;
-              }
-            } catch (e) {}
+            const candidate = await fetchUpstreamIcon(getUrl(domain));
+            if (candidate) {
+              buffer = candidate;
+              break;
+            }
           }
 
           if (!buffer) {
