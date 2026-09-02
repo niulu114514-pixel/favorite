@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agentprotocol.ai/schemas/mcp-config.json",
+  "mcpServers": {
+    "edgeone-pages-mcp-server": {
+      "command": "npx",
+      "args": [
+        "edgeone-pages-mcp-fullstack",
+        "--region",
+        "china"
+      ]
+    }
+  }
+}

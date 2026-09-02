@@ -1,0 +1,63 @@
+{
+  "name": "cloudnav",
+  "private": true,
+  "version": "2.0.1",
+  "type": "module",
+  "description": "A modern cloud-based navigation page built on EdgeOne Pages",
+  "keywords": [
+    "navigation",
+    "bookmarks",
+    "edgeone",
+    "vue",
+    "typescript",
+    "vite"
+  ],
+  "author": "落花流水",
+  "license": "GLWTPL",
+  "homepage": "https://github.com/niulu114514-pixel/favorite",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/niulu114514-pixel/favorite.git"
+  },
+  "bugs": {
+    "url": "https://github.com/niulu114514-pixel/favorite/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext ts,vue --report-unused-disable-directives --max-warnings 0",
+    "lint:fix": "eslint src --ext ts,vue --fix",
+    "format": "prettier --write \"src/**/*.{ts,vue,js,css,md,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,vue,js,css,md,json}\"",
+    "type-check": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@edgeone/pages-blob": "^0.0.8",
+    "@google/genai": "^1.52.0",
+    "buffer": "^6.0.3",
+    "lucide-vue-next": "^0.554.0",
+    "vue": "^3.5.22",
+    "uuid": "^13.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
+    "@types/node": "^22.19.18",
+    "@typescript-eslint/eslint-plugin": "^8.59.2",
+    "@typescript-eslint/parser": "^8.59.2",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "autoprefixer": "^10.5.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-vue": "^10.5.1",
+    "prettier": "^3.8.3",
+    "tailwindcss": "^4.3.0",
+    "terser": "^5.47.1",
+    "typescript": "~5.8.3",
+    "vite": "^6.4.2"
+    ,"vue-tsc": "^3.1.0"
+  }
+}
