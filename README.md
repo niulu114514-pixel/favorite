@@ -98,3 +98,10 @@ Cursor, and Cherry Studio.
 - Generic KV reads are not exposed; administrative reads and writes require authentication.
 - WebDAV and icon import requests require authentication, public HTTPS URLs, timeouts, and size limits.
 - Login attempts are rate-limited per client address.
+
+## WebDAV backup API
+
+`/api/webdav` is an optional server-side backup bridge. An authenticated client can
+check a WebDAV directory, upload `cloudnav_backup.json`, or download it for restore.
+It is not required for normal bookmark browsing; disable or remove the endpoint if you
+do not use WebDAV backups.

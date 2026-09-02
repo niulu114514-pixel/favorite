@@ -24,6 +24,10 @@ export function useCloudNav() {
   const token = ref(localStorage.getItem(AUTH_KEY) || '')
   const loading = ref(true)
   const syncStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  let syncPromise: Promise<void> | null = null
+  let syncRevision = 0
+  let syncedRevision = 0
+  let syncIdleTimer: number | undefined
   const config = reactive({
     title: '落花流水个人导航',
     navigationName: 'CloudNav',
@@ -68,6 +72,7 @@ export function useCloudNav() {
     const local = loadLocal()
     links.value = local.links
     categories.value = local.categories
+    loading.value = false
     try {
       const authHeaders = token.value ? { 'x-auth-password': token.value } : undefined
       const [dataResponse, configResponse] = await Promise.all([
@@ -113,22 +118,34 @@ export function useCloudNav() {
     )
   }
 
-  async function persist() {
+  function persist() {
     saveLocal()
     if (!token.value) return
+    syncRevision += 1
     syncStatus.value = 'saving'
-    try {
-      const response = await fetchWithTimeout('/api/storage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-auth-password': token.value },
-        body: JSON.stringify({ links: links.value, categories: categories.value }),
-      })
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      syncStatus.value = 'saved'
-      window.setTimeout(() => (syncStatus.value = 'idle'), 1800)
-    } catch {
-      syncStatus.value = 'error'
-    }
+    if (syncPromise) return
+
+    syncPromise = (async () => {
+      try {
+        while (syncedRevision < syncRevision) {
+          const revision = syncRevision
+          const response = await fetchWithTimeout('/api/storage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-auth-password': token.value },
+            body: JSON.stringify({ links: links.value, categories: categories.value }),
+          })
+          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          syncedRevision = revision
+        }
+        syncStatus.value = 'saved'
+        if (syncIdleTimer) window.clearTimeout(syncIdleTimer)
+        syncIdleTimer = window.setTimeout(() => (syncStatus.value = 'idle'), 1800)
+      } catch {
+        syncStatus.value = 'error'
+      } finally {
+        syncPromise = null
+      }
+    })()
   }
 
   async function login(password: string) {
@@ -164,15 +181,9 @@ export function useCloudNav() {
     }
   }
 
-  async function saveLink(link: Partial<LinkItem>) {
+  function saveLink(link: Partial<LinkItem>) {
     const prepared = { ...link }
-    if (!prepared.icon && prepared.url) {
-      try {
-        prepared.icon = await getIconUrl(prepared.url, config.icon)
-      } catch {
-        /* card fallback remains available */
-      }
-    }
+    const id = prepared.id || crypto.randomUUID()
     if (prepared.id) {
       links.value = links.value.map(item =>
         item.id === prepared.id ? ({ ...item, ...prepared } as LinkItem) : item
@@ -180,11 +191,24 @@ export function useCloudNav() {
     } else {
       links.value.unshift({
         ...prepared,
-        id: crypto.randomUUID(),
+        id,
         createdAt: Date.now(),
       } as LinkItem)
     }
-    await persist()
+    persist()
+
+    if (!prepared.icon && prepared.url) {
+      void getIconUrl(prepared.url, config.icon)
+        .then(icon => {
+          const current = links.value.find(item => item.id === id)
+          if (!current || current.icon || !icon) return
+          links.value = links.value.map(item => (item.id === id ? { ...item, icon } : item))
+          persist()
+        })
+        .catch(() => {
+          /* The card keeps using its runtime favicon fallback. */
+        })
+    }
   }
 
   async function removeLink(id: string) {

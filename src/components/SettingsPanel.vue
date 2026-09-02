@@ -770,4 +770,108 @@ html.dark .settings-section.settings-card h3 {
     border-bottom-color: #343d49;
   }
 }
+
+/* Final visual pass: a calmer, denser settings workspace. */
+.settings-modal {
+  width: min(980px, 100%);
+  max-height: min(820px, calc(100vh - 32px));
+  background: #f5f7fb;
+  border-color: #e2e8f2;
+}
+.settings-header {
+  padding: 24px 30px 20px;
+  background: linear-gradient(135deg, #edf3ff 0%, #f8faff 58%, #f4efff 100%);
+}
+.settings-header p {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.settings-body {
+  grid-template-columns: 210px minmax(0, 1fr);
+}
+.settings-nav {
+  padding: 24px 14px;
+  background: #eef2f8;
+  border-right-color: #e0e6ef;
+}
+.settings-nav button {
+  min-height: 42px;
+  padding: 10px 13px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+.settings-nav button.active {
+  background: #fff;
+  border-color: #d8e2fb;
+  box-shadow: 0 8px 18px rgba(54, 83, 145, 0.1);
+}
+.settings-content {
+  max-height: none;
+  padding: 22px 24px 26px;
+}
+.settings-section.settings-card {
+  margin-bottom: 16px;
+  padding: 22px;
+  border-radius: 17px;
+  background: #fff;
+  border-color: #e2e8f1;
+  box-shadow: 0 8px 24px rgba(41, 57, 89, 0.05);
+}
+.settings-section.settings-card h3 {
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+.settings-section label {
+  font-size: 13px;
+}
+.settings-section input:not([type='checkbox']),
+.settings-section select {
+  min-height: 40px;
+  padding: 10px 11px;
+  border-radius: 10px;
+}
+.settings-footer {
+  padding: 15px 30px;
+  background: #fff;
+}
+html.dark .settings-modal {
+  background: #1c232d;
+  border-color: #354253;
+}
+html.dark .settings-header {
+  background: linear-gradient(135deg, #263652 0%, #222933 58%, #302b45 100%);
+}
+html.dark .settings-nav {
+  background: #202833;
+  border-right-color: #354253;
+}
+html.dark .settings-nav button.active {
+  background: #303c50;
+  border-color: #485d83;
+}
+html.dark .settings-content {
+  background: #1c232d;
+}
+html.dark .settings-section.settings-card {
+  background: #242d39;
+  border-color: #3a4758;
+}
+html.dark .settings-footer {
+  background: #202833;
+  border-top-color: #354253;
+}
+@media (max-width: 680px) {
+  .settings-header {
+    padding: 20px 18px 16px;
+  }
+  .settings-content {
+    padding: 14px 13px 20px;
+  }
+  .settings-section.settings-card {
+    padding: 17px;
+  }
+  .settings-footer {
+    padding: 13px 18px;
+  }
+}
 </style>
