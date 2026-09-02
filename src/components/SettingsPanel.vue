@@ -36,6 +36,14 @@ const testingAI = ref(false)
 const aiMessage = ref('')
 const saveError = ref('')
 const copied = ref(false)
+const settingsContent = ref<HTMLElement>()
+const activeSection = ref('appearance')
+const settingsTabs = [
+  { id: 'appearance', label: '外观与视图', icon: Palette },
+  { id: 'icons', label: '图标获取', icon: ExternalLink },
+  { id: 'ai', label: 'AI 助手', icon: Sparkles },
+  { id: 'mcp', label: 'MCP 客户端', icon: KeyRound },
+]
 const mcpEndpoint = `${window.location.origin}/api/mcp`
 const mcpClientConfig = computed(() =>
   JSON.stringify(
@@ -114,6 +122,14 @@ async function copyMcp(value: string) {
   copied.value = true
   window.setTimeout(() => (copied.value = false), 1600)
 }
+
+function scrollToSection(id: string) {
+  activeSection.value = id
+  settingsContent.value?.querySelector(`#settings-${id}`)?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  })
+}
 </script>
 
 <template>
@@ -126,116 +142,135 @@ async function copyMcp(value: string) {
         </div>
         <button class="settings-close" @click="emit('close')"><X /></button>
       </header>
-      <div class="settings-content">
-        <section class="settings-section">
-          <h3><Palette :size="17" /> 网站外观</h3>
-          <div class="settings-grid">
+      <div class="settings-body">
+        <aside class="settings-nav" aria-label="设置分类">
+          <p class="settings-nav-label">配置中心</p>
+          <button
+            v-for="tab in settingsTabs"
+            :key="tab.id"
+            :class="{ active: activeSection === tab.id }"
+            :aria-current="activeSection === tab.id ? 'page' : undefined"
+            @click="scrollToSection(tab.id)"
+          >
+            <component :is="tab.icon" :size="16" />
+            <span>{{ tab.label }}</span>
+          </button>
+          <div class="settings-nav-tip">修改后点击底部“保存设置”同步到云端</div>
+        </aside>
+        <div ref="settingsContent" class="settings-content">
+          <section id="settings-appearance" class="settings-section settings-card">
+            <h3><Palette :size="17" /> 网站外观</h3>
+            <div class="settings-grid">
+              <label
+                >浏览器标题<input v-model="draft.websiteTitle" placeholder="落花流水个人导航"
+              /></label>
+              <label>导航名称<input v-model="draft.navigationName" placeholder="CloudNav" /></label>
+            </div>
+            <div class="settings-grid">
+              <label
+                >默认视图<select v-model="draft.defaultViewMode">
+                  <option value="detailed">详细</option>
+                  <option value="compact">紧凑</option>
+                </select></label
+              >
+              <label class="settings-check"
+                ><input v-model="draft.showPinned" type="checkbox" />显示置顶区域</label
+              >
+            </div>
+          </section>
+
+          <section id="settings-icons" class="settings-section settings-card">
+            <h3><ExternalLink :size="17" /> 图标自动获取</h3>
+            <p class="settings-help">
+              新增网站时自动生成图标；启用边缘缓存后由 `/api/favicon` 抓取并缓存到 EdgeOne Pages
+              Blob。
+            </p>
             <label
-              >浏览器标题<input v-model="draft.websiteTitle" placeholder="落花流水个人导航"
-            /></label>
-            <label>导航名称<input v-model="draft.navigationName" placeholder="CloudNav" /></label>
-          </div>
-          <div class="settings-grid">
-            <label
-              >默认视图<select v-model="draft.defaultViewMode">
-                <option value="detailed">详细</option>
-                <option value="compact">紧凑</option>
+              >图标来源<select v-model="draft.icon.source">
+                <option value="google">EdgeOne 缓存（推荐）</option>
+                <option value="faviconextractor">FaviconExtractor</option>
+                <option value="customurl">自定义 URL 模板</option>
+                <option value="customapi">自定义 API</option>
               </select></label
             >
             <label class="settings-check"
-              ><input v-model="draft.showPinned" type="checkbox" />显示置顶区域</label
+              ><input v-model="draft.icon.cacheEnabled" type="checkbox" />启用边缘抓取缓存</label
             >
-          </div>
-        </section>
+            <label v-if="draft.icon.source === 'customurl'"
+              >URL 模板<input
+                v-model="draft.icon.customurl!.url"
+                placeholder="https://example.com/icon?domain={domain}"
+            /></label>
+            <label v-if="draft.icon.source === 'customapi'"
+              >API 地址<input
+                v-model="draft.icon.customapi!.url"
+                placeholder="https://example.com/icon"
+            /></label>
+          </section>
 
-        <section class="settings-section">
-          <h3><ExternalLink :size="17" /> 图标自动获取</h3>
-          <p class="settings-help">
-            新增网站时自动生成图标；启用边缘缓存后由 `/api/favicon` 抓取并缓存到 EdgeOne Pages
-            Blob。
-          </p>
-          <label
-            >图标来源<select v-model="draft.icon.source">
-              <option value="google">EdgeOne 缓存（推荐）</option>
-              <option value="faviconextractor">FaviconExtractor</option>
-              <option value="customurl">自定义 URL 模板</option>
-              <option value="customapi">自定义 API</option>
-            </select></label
-          >
-          <label class="settings-check"
-            ><input v-model="draft.icon.cacheEnabled" type="checkbox" />启用边缘抓取缓存</label
-          >
-          <label v-if="draft.icon.source === 'customurl'"
-            >URL 模板<input
-              v-model="draft.icon.customurl!.url"
-              placeholder="https://example.com/icon?domain={domain}"
-          /></label>
-          <label v-if="draft.icon.source === 'customapi'"
-            >API 地址<input
-              v-model="draft.icon.customapi!.url"
-              placeholder="https://example.com/icon"
-          /></label>
-        </section>
-
-        <section class="settings-section">
-          <h3><Sparkles :size="17" /> AI 功能</h3>
-          <p class="settings-help">
-            在添加网站时自动生成中文描述，也可根据分类列表给出分类建议。API Key 仅保存在你的 KV
-            配置中。
-          </p>
-          <div class="settings-grid">
+          <section id="settings-ai" class="settings-section settings-card">
+            <h3><Sparkles :size="17" /> AI 功能</h3>
+            <p class="settings-help">
+              在添加网站时自动生成中文描述，也可根据分类列表给出分类建议。API Key 仅保存在你的 KV
+              配置中。
+            </p>
+            <div class="settings-grid">
+              <label
+                >提供商<select v-model="draft.ai.provider">
+                  <option value="google">Google Gemini</option>
+                  <option value="openai">OpenAI 兼容 API</option>
+                  <option value="claude">Claude</option>
+                </select></label
+              >
+              <label>模型<input v-model="draft.ai.model" placeholder="gemini-2.0-flash" /></label>
+            </div>
             <label
-              >提供商<select v-model="draft.ai.provider">
-                <option value="google">Google Gemini</option>
-                <option value="openai">OpenAI 兼容 API</option>
-                <option value="claude">Claude</option>
-              </select></label
-            >
-            <label>模型<input v-model="draft.ai.model" placeholder="gemini-2.0-flash" /></label>
-          </div>
-          <label
-            >API Key<input v-model="draft.ai.apiKey" type="password" autocomplete="off"
-          /></label>
-          <label
-            >Base URL<input v-model="draft.ai.baseUrl" placeholder="https://api.openai.com/v1"
-          /></label>
-          <div class="settings-inline">
-            <button class="settings-secondary" :disabled="testingAI" @click="testAI">
-              <Sparkles :size="15" />{{ testingAI ? '测试中…' : '测试 AI 配置' }}</button
-            ><span v-if="aiMessage" class="settings-result">{{ aiMessage }}</span>
-          </div>
-        </section>
+              >API Key<input v-model="draft.ai.apiKey" type="password" autocomplete="off"
+            /></label>
+            <label
+              >Base URL<input v-model="draft.ai.baseUrl" placeholder="https://api.openai.com/v1"
+            /></label>
+            <div class="settings-inline">
+              <button class="settings-secondary" :disabled="testingAI" @click="testAI">
+                <Sparkles :size="15" />{{ testingAI ? '测试中…' : '测试 AI 配置' }}</button
+              ><span v-if="aiMessage" class="settings-result">{{ aiMessage }}</span>
+            </div>
+          </section>
 
-        <section class="settings-section">
-          <h3><KeyRound :size="17" /> MCP / EdgeOne 部署</h3>
-          <p class="settings-help">
-            仓库根目录的 `.mcp.json` 已配置 EdgeOne Pages Deploy MCP，可在支持 MCP
-            的客户端中直接部署和持续迭代。
-          </p>
-          <p class="settings-help mcp-server-help">
-            这是 CloudNav 的远程 MCP 服务端地址，可直接粘贴到支持 Streamable HTTP 的客户端。读取工具无需认证，写入工具请在配置中填入管理令牌。
-          </p>
-          <div class="mcp-command">
-            <code>{{ mcpEndpoint }}</code
-            ><button @click="copyMcp(mcpEndpoint)" :title="copied ? '已复制' : '复制 MCP 地址'">
-              <Check v-if="copied" :size="15" /><Copy v-else :size="15" />
-            </button>
-          </div>
-          <div class="mcp-config">
-            <div class="mcp-config-title">客户端配置（Claude Desktop / Cursor / Cherry Studio）</div>
-            <pre><code>{{ mcpClientConfig }}</code></pre>
-            <button class="mcp-copy-config" @click="copyMcp(mcpClientConfig)">
-              <Copy :size="14" />复制配置
-            </button>
-          </div>
-          <a
-            class="mcp-link"
-            href="https://edgeone.cloud.tencent.com/pages/document/173172415568367616"
-            target="_blank"
-            rel="noreferrer"
-            >查看 EdgeOne Pages MCP 文档 <ExternalLink :size="14"
-          /></a>
-        </section>
+          <section id="settings-mcp" class="settings-section settings-card">
+            <h3><KeyRound :size="17" /> MCP / EdgeOne 部署</h3>
+            <p class="settings-help">
+              仓库根目录的 `.mcp.json` 已配置 EdgeOne Pages Deploy MCP，可在支持 MCP
+              的客户端中直接部署和持续迭代。
+            </p>
+            <p class="settings-help mcp-server-help">
+              这是 CloudNav 的远程 MCP 服务端地址，可直接粘贴到支持 Streamable HTTP
+              的客户端。读取工具无需认证，写入工具请在配置中填入管理令牌。
+            </p>
+            <div class="mcp-command">
+              <code>{{ mcpEndpoint }}</code
+              ><button @click="copyMcp(mcpEndpoint)" :title="copied ? '已复制' : '复制 MCP 地址'">
+                <Check v-if="copied" :size="15" /><Copy v-else :size="15" />
+              </button>
+            </div>
+            <div class="mcp-config">
+              <div class="mcp-config-title">
+                客户端配置（Claude Desktop / Cursor / Cherry Studio）
+              </div>
+              <pre><code>{{ mcpClientConfig }}</code></pre>
+              <button class="mcp-copy-config" @click="copyMcp(mcpClientConfig)">
+                <Copy :size="14" />复制配置
+              </button>
+            </div>
+            <a
+              class="mcp-link"
+              href="https://edgeone.cloud.tencent.com/pages/document/173172415568367616"
+              target="_blank"
+              rel="noreferrer"
+              >查看 EdgeOne Pages MCP 文档 <ExternalLink :size="14"
+            /></a>
+          </section>
+        </div>
       </div>
       <footer class="settings-footer">
         <span v-if="saveError" class="settings-error">{{ saveError }}</span
@@ -451,7 +486,12 @@ async function copyMcp(value: string) {
 }
 .mcp-config code {
   color: #3f4e67;
-  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font:
+    11px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
 }
 .mcp-copy-config {
   display: inline-flex;
@@ -558,5 +598,176 @@ html.dark .mcp-copy-config {
 }
 html.dark .settings-footer .settings-secondary {
   background: transparent;
+}
+
+/* Redesigned settings workspace */
+.settings-modal {
+  width: min(900px, 100%);
+  max-height: min(760px, calc(100vh - 28px));
+  border-radius: 24px;
+}
+.settings-header {
+  padding: 22px 26px 18px;
+  background: linear-gradient(135deg, rgba(244, 247, 255, 0.96), rgba(255, 255, 255, 0.88));
+}
+.settings-header h2 {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+.settings-header h2 svg {
+  color: #426be3;
+}
+.settings-body {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+}
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 20px 12px;
+  border-right: 1px solid #e9edf4;
+  background: rgba(246, 248, 252, 0.78);
+}
+.settings-nav-label {
+  margin: 0 10px 9px;
+  color: #8a96a8;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 10px 11px;
+  background: transparent;
+  color: #68758a;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
+}
+.settings-nav button:hover {
+  background: #eef2fb;
+  color: #315ed5;
+}
+.settings-nav button.active {
+  border-color: #d7e1ff;
+  background: #e8efff;
+  color: #315ed5;
+  box-shadow: 0 4px 12px rgba(66, 107, 227, 0.1);
+}
+.settings-nav-tip {
+  margin: auto 8px 0;
+  color: #9aa5b5;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.settings-content {
+  min-width: 0;
+  max-height: 490px;
+  padding: 16px 20px 22px;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+.settings-section.settings-card {
+  margin: 0 0 13px;
+  padding: 18px;
+  border: 1px solid #e7ebf3;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 5px 18px rgba(36, 51, 83, 0.04);
+}
+.settings-section.settings-card:last-child {
+  margin-bottom: 0;
+}
+.settings-section.settings-card h3 {
+  margin-bottom: 8px;
+  color: #273650;
+  font-size: 14px;
+}
+.settings-section.settings-card h3 svg {
+  color: #5579e4;
+}
+.settings-card .settings-help {
+  max-width: 680px;
+}
+html.dark .settings-header {
+  background: linear-gradient(135deg, rgba(38, 48, 64, 0.96), rgba(34, 41, 51, 0.9));
+}
+html.dark .settings-nav {
+  border-color: #343d49;
+  background: rgba(25, 31, 40, 0.78);
+}
+html.dark .settings-nav button {
+  color: #aab5c5;
+}
+html.dark .settings-nav button:hover {
+  background: #2a3852;
+  color: #d8e3ff;
+}
+html.dark .settings-nav button.active {
+  border-color: #405582;
+  background: #2d416f;
+  color: #d8e3ff;
+}
+html.dark .settings-nav-tip {
+  color: #7f8b9b;
+}
+html.dark .settings-section.settings-card {
+  border-color: #343d49;
+  background: rgba(32, 40, 51, 0.72);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.14);
+}
+html.dark .settings-section.settings-card h3 {
+  color: #dbe3ef;
+}
+@media (max-width: 680px) {
+  .settings-body {
+    display: block;
+  }
+  .settings-nav {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    padding: 10px 12px;
+    border-right: 0;
+    border-bottom: 1px solid #e9edf4;
+  }
+  .settings-nav-label,
+  .settings-nav-tip {
+    display: none;
+  }
+  .settings-nav button {
+    justify-content: center;
+    padding: 9px 4px;
+    font-size: 11px;
+  }
+  .settings-nav button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .settings-content {
+    max-height: calc(100vh - 240px);
+    padding: 12px;
+  }
+  .settings-section.settings-card {
+    padding: 14px;
+  }
+  html.dark .settings-nav {
+    border-bottom-color: #343d49;
+  }
 }
 </style>
