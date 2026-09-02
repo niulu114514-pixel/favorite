@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import {
   Check,
   Copy,
@@ -36,6 +36,21 @@ const testingAI = ref(false)
 const aiMessage = ref('')
 const saveError = ref('')
 const copied = ref(false)
+const mcpEndpoint = `${window.location.origin}/api/mcp`
+const mcpClientConfig = computed(() =>
+  JSON.stringify(
+    {
+      mcpServers: {
+        cloudnav: {
+          url: mcpEndpoint,
+          headers: { Authorization: 'Bearer YOUR_ADMIN_TOKEN' },
+        },
+      },
+    },
+    null,
+    2
+  )
+)
 
 function createDraft(source: SettingsDraft): SettingsDraft {
   return {
@@ -94,8 +109,8 @@ async function testAI() {
   }
 }
 
-async function copyMcp() {
-  await navigator.clipboard.writeText('npx edgeone-pages-mcp-fullstack --region china')
+async function copyMcp(value: string) {
+  await navigator.clipboard.writeText(value)
   copied.value = true
   window.setTimeout(() => (copied.value = false), 1600)
 }
@@ -197,10 +212,20 @@ async function copyMcp() {
             仓库根目录的 `.mcp.json` 已配置 EdgeOne Pages Deploy MCP，可在支持 MCP
             的客户端中直接部署和持续迭代。
           </p>
+          <p class="settings-help mcp-server-help">
+            这是 CloudNav 的远程 MCP 服务端地址，可直接粘贴到支持 Streamable HTTP 的客户端。读取工具无需认证，写入工具请在配置中填入管理令牌。
+          </p>
           <div class="mcp-command">
-            <code>npx edgeone-pages-mcp-fullstack --region china</code
-            ><button @click="copyMcp" :title="copied ? '已复制' : '复制命令'">
+            <code>{{ mcpEndpoint }}</code
+            ><button @click="copyMcp(mcpEndpoint)" :title="copied ? '已复制' : '复制 MCP 地址'">
               <Check v-if="copied" :size="15" /><Copy v-else :size="15" />
+            </button>
+          </div>
+          <div class="mcp-config">
+            <div class="mcp-config-title">客户端配置（Claude Desktop / Cursor / Cherry Studio）</div>
+            <pre><code>{{ mcpClientConfig }}</code></pre>
+            <button class="mcp-copy-config" @click="copyMcp(mcpClientConfig)">
+              <Copy :size="14" />复制配置
             </button>
           </div>
           <a
@@ -405,6 +430,42 @@ async function copyMcp() {
   color: #526aab;
   cursor: pointer;
 }
+.mcp-config {
+  position: relative;
+  margin-top: 12px;
+  padding: 11px;
+  border: 1px solid #e1e6ef;
+  border-radius: 9px;
+  background: #f7f9fc;
+}
+.mcp-config-title {
+  margin-bottom: 7px;
+  color: #637087;
+  font-size: 12px;
+}
+.mcp-config pre {
+  max-height: 150px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre;
+}
+.mcp-config code {
+  color: #3f4e67;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.mcp-copy-config {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 7px;
+  padding: 6px 9px;
+  background: #e8eefc;
+  color: #315ed5;
+  cursor: pointer;
+  font-size: 12px;
+}
 .mcp-link {
   display: inline-flex;
   align-items: center;
@@ -482,6 +543,18 @@ html.dark .settings-help {
 html.dark .mcp-command {
   background: #171d25;
   border-color: #414b5a;
+}
+html.dark .mcp-config {
+  background: #171d25;
+  border-color: #414b5a;
+}
+html.dark .mcp-config-title,
+html.dark .mcp-config code {
+  color: #b7c2d2;
+}
+html.dark .mcp-copy-config {
+  background: #2d416f;
+  color: #d8e3ff;
 }
 html.dark .settings-footer .settings-secondary {
   background: transparent;
