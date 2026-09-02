@@ -1,6 +1,6 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
-import react from '@vitejs/plugin-react';
+import vue from '@vitejs/plugin-vue';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
         open: true,
       },
       plugins: [
-        react(),
+        vue(),
       ],
       // define: {
       //   // 移除API密钥暴露到前端的配置
@@ -40,14 +40,11 @@ export default defineConfig(({ mode }) => {
         rollupOptions: {
           output: {
             manualChunks(id) {
-              if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+              if (id.includes('node_modules/vue/')) {
                 return 'vendor';
               }
-              if (id.includes('node_modules/lucide-react/')) {
+              if (id.includes('node_modules/lucide-vue-next/')) {
                 return 'ui';
-              }
-              if (id.includes('node_modules/@dnd-kit/')) {
-                return 'dnd';
               }
             },
             chunkFileNames: 'assets/[name]-[hash].js',
@@ -61,7 +58,7 @@ export default defineConfig(({ mode }) => {
         target: 'esnext',
       },
       optimizeDeps: {
-        include: ['react', 'react-dom', 'lucide-react'],
+        include: ['vue', 'lucide-vue-next'],
       },
       css: {
         devSourcemap: true,

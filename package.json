@@ -8,7 +8,7 @@
     "navigation",
     "bookmarks",
     "edgeone",
-    "react",
+    "vue",
     "typescript",
     "vite"
   ],
@@ -30,22 +30,18 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "lint:fix": "eslint . --ext ts,tsx --fix",
-    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,css,md,json}\"",
-    "type-check": "tsc --noEmit"
+    "lint": "eslint src --ext ts,vue --report-unused-disable-directives --max-warnings 0",
+    "lint:fix": "eslint src --ext ts,vue --fix",
+    "format": "prettier --write \"src/**/*.{ts,vue,js,css,md,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,vue,js,css,md,json}\"",
+    "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@dnd-kit/core": "^6.3.1",
-    "@dnd-kit/sortable": "^8.0.0",
-    "@dnd-kit/utilities": "^3.2.2",
     "@edgeone/pages-blob": "^0.0.8",
     "@google/genai": "^1.52.0",
     "buffer": "^6.0.3",
-    "lucide-react": "^0.554.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
+    "lucide-vue-next": "^0.554.0",
+    "vue": "^3.5.22",
     "uuid": "^13.0.2"
   },
   "devDependencies": {
@@ -53,16 +49,15 @@
     "@types/node": "^22.19.18",
     "@typescript-eslint/eslint-plugin": "^8.59.2",
     "@typescript-eslint/parser": "^8.59.2",
-    "@vitejs/plugin-react": "^5.2.0",
+    "@vitejs/plugin-vue": "^6.0.1",
     "autoprefixer": "^10.5.0",
     "eslint": "^9.39.4",
-    "eslint-plugin-jsx-a11y": "^6.10.2",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-vue": "^10.5.1",
     "prettier": "^3.8.3",
     "tailwindcss": "^4.3.0",
     "terser": "^5.47.1",
     "typescript": "~5.8.3",
     "vite": "^6.4.2"
+    ,"vue-tsc": "^3.1.0"
   }
 }

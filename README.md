@@ -30,7 +30,7 @@
 
 #### 技术栈
 
-- React 19
+- Vue 3（Composition API）
 - TypeScript
 - Vite
 - Tailwind CSS 4
@@ -43,10 +43,9 @@
 ┌──────────────────────────────────────────────┐
 │               Browser (Client)               │
 │                                              │
-│  React 19 + TypeScript + Tailwind CSS 4      │
-│  State: Context + useReducer                 │
-│  DnD: @dnd-kit                               │
-│  Icons: lucide-react                         │
+│  Vue 3 + TypeScript + Tailwind CSS 4         │
+│  State: Composition API                      │
+│  Icons: lucide-vue-next                      │
 │                                              │
 │  Data: localStorage (cache) + KV (persist)   │
 └──────────────────┬───────────────────────────┘
@@ -150,12 +149,12 @@ edgeone pages dev
 ├── services/                  # 前端业务逻辑 (AI, 书签解析, 导出, WebDAV 等)
 ├── src/
 │   ├── components/            # 核心业务组件 (layout, category, link)
-│   ├── contexts/              # React Context 状态管理 (Auth, Links, Categories, Config)
+│   ├── composables/           # Vue Composition API 状态与数据同步
 │   ├── hooks/                 # 自定义 Hooks (Search, DragSort, DataSync)
 │   ├── utils/                 # 工具函数 (Config, Security, ColorExtractor)
 │   └── constants/             # 常量定义
 ├── public/                    # 静态资源 (favicon, sitemap, manifest 等)
-├── App.tsx                    # 应用入口
+├── src/App.vue                # Vue 应用入口
 ├── types.ts                   # 类型定义 & 初始数据
 ├── edgeone.json               # EdgeOne Pages 配置
 └── package.json               # 项目依赖
