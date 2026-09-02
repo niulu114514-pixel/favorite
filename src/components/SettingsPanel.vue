@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import {
   Check,
+  Cloud,
   Copy,
   ExternalLink,
   KeyRound,
@@ -11,13 +12,14 @@ import {
   Sparkles,
   X,
 } from 'lucide-vue-next'
-import type { AIConfig, IconConfig } from '../../types'
+import type { AIConfig, IconConfig, WebDavConfig } from '../../types'
 import { DEFAULT_ICON_CONFIG } from '../services/iconService'
 import { generateLinkDescription } from '../services/aiService'
 
 type SettingsDraft = {
   ai: AIConfig
   icon: IconConfig
+  webdav: WebDavConfig
   websiteTitle: string
   navigationName: string
   showPinned: boolean
@@ -27,6 +29,7 @@ type SettingsDraft = {
 const props = defineProps<{
   open: boolean
   config: SettingsDraft
+  token: string
   saveConfigBatch: (configs: Record<string, unknown>) => Promise<void>
 }>()
 const emit = defineEmits<{ close: []; saved: [settings: SettingsDraft] }>()
@@ -34,6 +37,8 @@ const draft = reactive<SettingsDraft>(createDraft(props.config))
 const saving = ref(false)
 const testingAI = ref(false)
 const aiMessage = ref('')
+const webdavMessage = ref('')
+const webdavBusy = ref(false)
 const saveError = ref('')
 const copied = ref(false)
 const settingsContent = ref<HTMLElement>()
@@ -43,6 +48,7 @@ const settingsTabs = [
   { id: 'icons', label: '图标获取', icon: ExternalLink },
   { id: 'ai', label: 'AI 助手', icon: Sparkles },
   { id: 'mcp', label: 'MCP 客户端', icon: KeyRound },
+  { id: 'webdav', label: 'WebDAV 备份', icon: Cloud },
 ]
 const mcpEndpoint = `${window.location.origin}/api/mcp`
 const mcpClientConfig = computed(() =>
@@ -67,6 +73,7 @@ function createDraft(source: SettingsDraft): SettingsDraft {
       providers: source.ai.providers ? JSON.parse(JSON.stringify(source.ai.providers)) : undefined,
     },
     icon: { ...DEFAULT_ICON_CONFIG, ...source.icon },
+    webdav: { url: '', username: '', password: '', enabled: false, ...source.webdav },
     websiteTitle: source.websiteTitle || source.ai.websiteTitle || '',
     navigationName: source.navigationName || source.ai.navigationName || '',
     showPinned: source.showPinned,
@@ -81,6 +88,7 @@ watch(
     Object.assign(draft, createDraft(props.config))
     aiMessage.value = ''
     saveError.value = ''
+    webdavMessage.value = ''
   }
 )
 
@@ -92,6 +100,7 @@ async function save() {
     await props.saveConfigBatch({
       ai,
       icon: draft.icon,
+      webdav: draft.webdav,
       ui: { showPinnedWebsites: draft.showPinned },
       view: { defaultMode: draft.defaultViewMode },
     })
@@ -101,6 +110,25 @@ async function save() {
     saveError.value = error instanceof Error ? error.message : '保存失败'
   } finally {
     saving.value = false
+  }
+}
+
+async function testWebDav() {
+  webdavBusy.value = true
+  webdavMessage.value = ''
+  try {
+    const response = await fetch('/api/webdav', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-auth-password': props.token },
+      body: JSON.stringify({ operation: 'check', config: draft.webdav }),
+    })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok || !result.success) throw new Error(result.error || `HTTP ${response.status}`)
+    webdavMessage.value = '连接成功，可以进行备份'
+  } catch (error) {
+    webdavMessage.value = error instanceof Error ? error.message : '连接失败，请检查地址和账号'
+  } finally {
+    webdavBusy.value = false
   }
 }
 
@@ -126,7 +154,7 @@ async function copyMcp(value: string) {
 function scrollToSection(id: string) {
   activeSection.value = id
   settingsContent.value?.querySelector(`#settings-${id}`)?.scrollIntoView({
-    behavior: 'smooth',
+    behavior: 'auto',
     block: 'start',
   })
 }
@@ -237,6 +265,52 @@ function scrollToSection(id: string) {
             </div>
           </section>
 
+          <section id="settings-webdav" class="settings-section settings-card">
+            <h3><Cloud :size="17" /> WebDAV 备份</h3>
+            <p class="settings-help">
+              可连接 Nextcloud、坚果云或 NAS 的 WebDAV 目录。CloudNav 会在服务端保存
+              <code>cloudnav_backup.json</code>，仅用于备份与恢复，不影响日常收藏浏览。
+            </p>
+            <label class="settings-check">
+              <input v-model="draft.webdav.enabled" type="checkbox" />启用 WebDAV 备份
+            </label>
+            <div class="settings-grid">
+              <label
+                >WebDAV 地址<input
+                  v-model="draft.webdav.url"
+                  placeholder="https://dav.example.com/remote.php/dav/files/user/"
+                  autocomplete="url"
+              /></label>
+              <label>用户名<input v-model="draft.webdav.username" autocomplete="username" /></label>
+            </div>
+            <label
+              >密码或应用专用密码<input
+                v-model="draft.webdav.password"
+                type="password"
+                autocomplete="new-password"
+            /></label>
+            <div class="settings-inline">
+              <button
+                class="settings-secondary"
+                :disabled="
+                  webdavBusy ||
+                  !draft.webdav.url ||
+                  !draft.webdav.username ||
+                  !draft.webdav.password
+                "
+                @click="testWebDav"
+              >
+                <Cloud :size="15" />{{ webdavBusy ? '测试中…' : '测试连接' }}
+              </button>
+              <span
+                v-if="webdavMessage"
+                class="settings-result"
+                :class="{ error: !webdavMessage.includes('成功') }"
+                >{{ webdavMessage }}</span
+              >
+            </div>
+          </section>
+
           <section id="settings-mcp" class="settings-section settings-card">
             <h3><KeyRound :size="17" /> MCP / EdgeOne 部署</h3>
             <p class="settings-help">
@@ -291,8 +365,7 @@ function scrollToSection(id: string) {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(18, 27, 42, 0.5);
-  backdrop-filter: blur(5px);
+  background: rgba(18, 27, 42, 0.64);
 }
 .settings-modal {
   width: min(680px, 100%);
@@ -304,6 +377,7 @@ function scrollToSection(id: string) {
   border: 1px solid rgba(255, 255, 255, 0.85);
   border-radius: 20px;
   box-shadow: 0 28px 90px rgba(27, 40, 72, 0.28);
+  contain: layout style;
 }
 .settings-header {
   display: flex;
@@ -341,6 +415,7 @@ function scrollToSection(id: string) {
 .settings-content {
   overflow: auto;
   padding: 4px 24px 18px;
+  overscroll-behavior: contain;
 }
 .settings-section {
   padding: 19px 0;
@@ -444,6 +519,9 @@ function scrollToSection(id: string) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.settings-result.error {
+  color: #cf4141;
 }
 .mcp-command {
   display: flex;
@@ -678,7 +756,7 @@ html.dark .settings-footer .settings-secondary {
   min-width: 0;
   max-height: 490px;
   padding: 16px 20px 22px;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   overscroll-behavior: contain;
 }
 .settings-section.settings-card {
@@ -688,6 +766,7 @@ html.dark .settings-footer .settings-secondary {
   border-radius: 15px;
   background: rgba(255, 255, 255, 0.78);
   box-shadow: 0 5px 18px rgba(36, 51, 83, 0.04);
+  contain: layout style;
 }
 .settings-section.settings-card:last-child {
   margin-bottom: 0;
@@ -739,7 +818,7 @@ html.dark .settings-section.settings-card h3 {
   }
   .settings-nav {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 5px;
     padding: 10px 12px;
     border-right: 0;

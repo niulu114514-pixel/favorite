@@ -1,7 +1,7 @@
 import { computed, reactive, ref } from 'vue'
 import type { Category, LinkItem } from '../../types'
 import { DEFAULT_CATEGORIES, INITIAL_LINKS } from '../../types'
-import type { AIConfig, IconConfig } from '../../types'
+import type { AIConfig, IconConfig, WebDavConfig } from '../../types'
 import { DEFAULT_ICON_CONFIG, getIconUrl } from '../services/iconService'
 
 const DATA_KEY = 'cloudnav_data_cache'
@@ -43,12 +43,33 @@ export function useCloudNav() {
       faviconUrl: '',
     } as AIConfig,
     icon: { ...DEFAULT_ICON_CONFIG } as IconConfig,
+    webdav: {
+      url: '',
+      username: '',
+      password: '',
+      enabled: false,
+    } as WebDavConfig,
   })
 
   function normalize(data: { links?: LinkItem[]; categories?: Category[] }) {
-    const nextCategories = data.categories?.length ? [...data.categories] : [...DEFAULT_CATEGORIES]
+    const nextCategories = data.categories?.length
+      ? data.categories.map(category => ({ ...category }))
+      : DEFAULT_CATEGORIES.map(category => ({ ...category }))
     if (!nextCategories.some(item => item.id === 'common')) {
       nextCategories.unshift({ id: 'common', name: '常用推荐', icon: 'Star' })
+    }
+    const categoryIds = new Set(nextCategories.map(item => item.id))
+    for (const category of nextCategories) {
+      if (
+        !category.parentId ||
+        category.parentId === category.id ||
+        !categoryIds.has(category.parentId)
+      ) {
+        delete category.parentId
+        category.isSubcategory = false
+      } else {
+        category.isSubcategory = true
+      }
     }
     const validIds = new Set(nextCategories.map(item => item.id))
     return {
@@ -100,10 +121,12 @@ export function useCloudNav() {
   function applyConfig(loaded: Record<string, unknown>) {
     const ai = (loaded.ai || {}) as Partial<AIConfig>
     const icon = (loaded.icon || {}) as Partial<IconConfig>
+    const webdav = (loaded.webdav || {}) as Partial<WebDavConfig>
     const view = (loaded.view || {}) as { defaultMode?: 'compact' | 'detailed' }
     const ui = (loaded.ui || {}) as { showPinnedWebsites?: boolean }
     Object.assign(config.ai, ai)
     Object.assign(config.icon, icon)
+    Object.assign(config.webdav, webdav)
     config.title = ai.websiteTitle || config.title
     config.navigationName = ai.navigationName || config.navigationName
     config.defaultViewMode = view.defaultMode || config.defaultViewMode
@@ -224,13 +247,20 @@ export function useCloudNav() {
   }
 
   async function saveCategory(category: Partial<Category>) {
+    const parentId =
+      category.parentId &&
+      category.parentId !== category.id &&
+      categories.value.some(item => item.id === category.parentId && !item.parentId)
+        ? category.parentId
+        : undefined
+    const prepared = { ...category, parentId, isSubcategory: Boolean(parentId) }
     if (category.id && categories.value.some(item => item.id === category.id)) {
       categories.value = categories.value.map(item =>
-        item.id === category.id ? ({ ...item, ...category } as Category) : item
+        item.id === category.id ? ({ ...item, ...prepared } as Category) : item
       )
     } else {
       categories.value.push({
-        ...category,
+        ...prepared,
         id: category.id || crypto.randomUUID(),
         icon: category.icon || 'Folder',
       } as Category)

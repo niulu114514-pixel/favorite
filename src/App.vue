@@ -55,6 +55,29 @@ const dragOverCategoryId = ref<string | null>(null)
 const faviconCache = new Map<string, string>()
 const searchTextCache = new WeakMap<LinkItem, string>()
 
+const categoryMap = computed(
+  () => new Map(nav.categories.value.map(category => [category.id, category]))
+)
+const topLevelCategories = computed(() =>
+  nav.categories.value.filter(
+    category => !category.parentId || !categoryMap.value.has(category.parentId)
+  )
+)
+const childCategories = computed(() => {
+  const grouped = new Map<string, Category[]>()
+  for (const category of nav.categories.value) {
+    if (!category.parentId || !categoryMap.value.has(category.parentId)) continue
+    const children = grouped.get(category.parentId)
+    if (children) children.push(category)
+    else grouped.set(category.parentId, [category])
+  }
+  return grouped
+})
+
+function categoryChildren(categoryId: string) {
+  return childCategories.value.get(categoryId) || []
+}
+
 const visibleLinks = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query || externalSearch.value) return nav.links.value
@@ -230,13 +253,19 @@ async function submitLogin() {
 }
 
 function openCategoryModal(category?: Category) {
-  editingCategory.value = category ? { ...category } : { name: '', icon: 'Folder' }
+  editingCategory.value = category ? { ...category } : { name: '', icon: 'Folder', parentId: '' }
   categoryModalOpen.value = true
 }
 
 async function submitCategory() {
   if (!editingCategory.value.name?.trim()) return
-  await nav.saveCategory({ ...editingCategory.value, name: editingCategory.value.name.trim() })
+  const parentId = editingCategory.value.parentId || undefined
+  await nav.saveCategory({
+    ...editingCategory.value,
+    name: editingCategory.value.name.trim(),
+    parentId,
+    isSubcategory: Boolean(parentId),
+  })
   categoryModalOpen.value = false
 }
 
@@ -266,6 +295,7 @@ function fallbackIcon(event: Event, link: LinkItem) {
 function onSettingsSaved(settings: {
   ai: typeof nav.config.ai
   icon: typeof nav.config.icon
+  webdav: typeof nav.config.webdav
   websiteTitle: string
   navigationName: string
   showPinned: boolean
@@ -273,6 +303,7 @@ function onSettingsSaved(settings: {
 }) {
   Object.assign(nav.config.ai, settings.ai)
   Object.assign(nav.config.icon, settings.icon)
+  Object.assign(nav.config.webdav, settings.webdav)
   nav.config.title = settings.websiteTitle || nav.config.title
   nav.config.navigationName = settings.navigationName
   nav.config.showPinned = settings.showPinned
@@ -315,30 +346,55 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
         ><button class="icon-button mobile-only" @click="sidebarOpen = false"><X /></button>
       </div>
       <nav class="category-nav">
-        <button
-          v-for="category in nav.categories.value"
-          :key="category.id"
-          type="button"
-          :aria-current="activeCategoryId === category.id ? 'location' : undefined"
-          :draggable="true"
-          :title="'拖动调整分类顺序（Alt+↑/↓）'"
-          :class="{
-            active: activeCategoryId === category.id,
-            dragging: draggedCategoryId === category.id,
-            'drag-over': dragOverCategoryId === category.id && draggedCategoryId !== category.id,
-          }"
-          @dragstart="startCategoryDrag($event, category.id)"
-          @dragenter.prevent="setCategoryDragOver(category.id)"
-          @dragover.prevent="setCategoryDragOver(category.id)"
-          @drop.prevent="dropCategory(category.id)"
-          @dragend="endCategoryDrag"
-          @keydown="moveCategoryByKeyboard($event, category.id)"
-          @click.prevent="jumpTo(category.id)"
-        >
-          <GripVertical class="drag-handle" :size="15" aria-hidden="true" />
-          <Folder :size="17" /><span>{{ category.name }}</span
-          ><ChevronRight :size="15" />
-        </button>
+        <template v-for="category in topLevelCategories" :key="category.id">
+          <button
+            type="button"
+            :aria-current="activeCategoryId === category.id ? 'location' : undefined"
+            :draggable="true"
+            :title="'拖动调整分类顺序（Alt+↑/↓）'"
+            :class="{
+              active: activeCategoryId === category.id,
+              dragging: draggedCategoryId === category.id,
+              'drag-over': dragOverCategoryId === category.id && draggedCategoryId !== category.id,
+            }"
+            @dragstart="startCategoryDrag($event, category.id)"
+            @dragenter.prevent="setCategoryDragOver(category.id)"
+            @dragover.prevent="setCategoryDragOver(category.id)"
+            @drop.prevent="dropCategory(category.id)"
+            @dragend="endCategoryDrag"
+            @keydown="moveCategoryByKeyboard($event, category.id)"
+            @click.prevent="jumpTo(category.id)"
+          >
+            <GripVertical class="drag-handle" :size="15" aria-hidden="true" />
+            <Folder :size="17" /><span>{{ category.name }}</span
+            ><ChevronRight :size="15" />
+          </button>
+          <button
+            v-for="child in categoryChildren(category.id)"
+            :key="child.id"
+            type="button"
+            class="subcategory"
+            :aria-current="activeCategoryId === child.id ? 'location' : undefined"
+            :draggable="true"
+            :title="'拖动调整分类顺序（Alt+↑/↓）'"
+            :class="{
+              active: activeCategoryId === child.id,
+              dragging: draggedCategoryId === child.id,
+              'drag-over': dragOverCategoryId === child.id && draggedCategoryId !== child.id,
+            }"
+            @dragstart="startCategoryDrag($event, child.id)"
+            @dragenter.prevent="setCategoryDragOver(child.id)"
+            @dragover.prevent="setCategoryDragOver(child.id)"
+            @drop.prevent="dropCategory(child.id)"
+            @dragend="endCategoryDrag"
+            @keydown="moveCategoryByKeyboard($event, child.id)"
+            @click.prevent="jumpTo(child.id)"
+          >
+            <GripVertical class="drag-handle" :size="15" aria-hidden="true" />
+            <Folder :size="16" /><span>{{ child.name }}</span
+            ><ChevronRight :size="15" />
+          </button>
+        </template>
       </nav>
       <div class="sidebar-footer">
         <button v-if="nav.token.value" @click="openCategoryModal()">
@@ -463,7 +519,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
               v-if="!searchQuery.trim() || categoryLinks(category.id).length"
               :id="`category-${category.id}`"
               class="category-section"
-              :class="{ 'is-active': activeCategoryId === category.id }"
+              :class="{
+                'is-active': activeCategoryId === category.id,
+                'subcategory-section': Boolean(category.parentId),
+              }"
             >
               <div class="section-title">
                 <h2>
@@ -646,6 +705,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
             maxlength="40"
             placeholder="例如：开发工具"
         /></label>
+        <label>
+          上级分类
+          <select v-model="editingCategory.parentId">
+            <option value="">一级分类（顶层）</option>
+            <option
+              v-for="parent in topLevelCategories.filter(item => item.id !== editingCategory.id)"
+              :key="parent.id"
+              :value="parent.id"
+            >
+              二级分类 · {{ parent.name }}
+            </option>
+          </select>
+        </label>
+        <p class="modal-help">支持两级分类；二级分类会缩进显示在侧栏中。</p>
         <div class="modal-actions">
           <button type="button" class="secondary-button" @click="categoryModalOpen = false">
             取消</button
@@ -659,11 +732,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
       :config="{
         ai: nav.config.ai,
         icon: nav.config.icon,
+        webdav: nav.config.webdav,
         websiteTitle: nav.config.title,
         navigationName: nav.config.navigationName,
         showPinned: nav.config.showPinned,
         defaultViewMode: nav.config.defaultViewMode,
       }"
+      :token="nav.token.value"
       :save-config-batch="nav.saveConfigBatch"
       @close="settingsOpen = false"
       @saved="onSettingsSaved"
@@ -785,6 +860,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
 }
 .category-nav button span {
   flex: 1;
+}
+.category-nav button.subcategory {
+  margin-left: 14px;
+  width: calc(100% - 14px);
+  padding-left: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 12px;
 }
 .category-nav button.dragging {
   opacity: 0.45;
@@ -953,10 +1035,30 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
   border-radius: 20px;
 }
 .pinned-section {
-  padding: 20px;
-  border-radius: 18px;
+  margin-inline: -8px;
+  padding: 27px 28px 29px;
+  border-radius: 20px;
   background: linear-gradient(135deg, #eef3ff, #f6f2ff);
   border: 1px solid #dfe7ff;
+}
+.pinned-section h2 {
+  margin-bottom: 18px;
+}
+.pinned-section .link-grid {
+  gap: 16px;
+}
+.pinned-section .link-card {
+  min-height: 94px;
+  padding: 17px;
+}
+.pinned-section .link-grid.compact .link-card {
+  min-height: 70px;
+  padding: 12px 14px;
+}
+.subcategory-section {
+  margin-left: 22px;
+  padding-left: 18px;
+  border-left: 2px solid rgba(123, 156, 255, 0.18);
 }
 .pinned-section h2 {
   color: #4968ca;
@@ -1165,6 +1267,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
   display: block;
   margin: 13px 0;
 }
+.modal-help {
+  margin: -4px 0 0;
+  color: #8490a3;
+  font-size: 12px;
+}
 .modal input,
 .modal textarea,
 .modal select {
@@ -1272,6 +1379,12 @@ html.dark .sidebar-footer {
 html.dark .pinned-section {
   background: linear-gradient(135deg, #202a3f, #29243a);
   border-color: #35415e;
+}
+html.dark .category-nav button.subcategory {
+  background: rgba(255, 255, 255, 0.025);
+}
+html.dark .subcategory-section {
+  border-left-color: rgba(145, 171, 246, 0.24);
 }
 html.dark .skeleton {
   background: linear-gradient(90deg, #222b38 25%, #303b4b 50%, #222b38 75%);

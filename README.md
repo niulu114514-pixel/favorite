@@ -105,3 +105,13 @@ Cursor, and Cherry Studio.
 check a WebDAV directory, upload `cloudnav_backup.json`, or download it for restore.
 It is not required for normal bookmark browsing; disable or remove the endpoint if you
 do not use WebDAV backups.
+
+After signing in, open `Settings > WebDAV backup` to enter the WebDAV HTTPS URL,
+username, and password (an app-specific password is recommended). Use `Test connection`
+to verify the remote directory before saving. The endpoint only accepts public HTTPS
+WebDAV servers; local/private addresses are rejected for security.
+
+## Nested categories
+
+Categories support one parent level. Create or edit a category and choose an optional
+top-level parent; child categories are indented in the sidebar and in the content area.
