@@ -27,7 +27,7 @@ type SettingsDraft = {
 const props = defineProps<{
   open: boolean
   config: SettingsDraft
-  saveConfig: (section: string, value: unknown) => Promise<void>
+  saveConfigBatch: (configs: Record<string, unknown>) => Promise<void>
 }>()
 const emit = defineEmits<{ close: []; saved: [settings: SettingsDraft] }>()
 const draft = reactive<SettingsDraft>(createDraft(props.config))
@@ -89,12 +89,12 @@ async function save() {
   saveError.value = ''
   const ai = { ...draft.ai, websiteTitle: draft.websiteTitle, navigationName: draft.navigationName }
   try {
-    await Promise.all([
-      props.saveConfig('ai', ai),
-      props.saveConfig('icon', draft.icon),
-      props.saveConfig('ui', { showPinnedWebsites: draft.showPinned }),
-      props.saveConfig('view', { defaultMode: draft.defaultViewMode }),
-    ])
+    await props.saveConfigBatch({
+      ai,
+      icon: draft.icon,
+      ui: { showPinnedWebsites: draft.showPinned },
+      view: { defaultMode: draft.defaultViewMode },
+    })
     emit('saved', { ...draft, ai })
     emit('close')
   } catch (error) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   Bookmark,
   Check,
@@ -35,7 +35,9 @@ const searchQuery = ref('')
 const externalSearch = ref(false)
 const sidebarOpen = ref(false)
 const dark = ref(localStorage.getItem('cloudnav_theme_preference') === 'dark')
-const compact = ref(localStorage.getItem('cloudnav_view_mode') === 'compact')
+const savedViewMode = localStorage.getItem('cloudnav_view_mode')
+const hasSavedViewMode = savedViewMode === 'compact' || savedViewMode === 'detailed'
+const compact = ref(savedViewMode === 'compact')
 const linkModalOpen = ref(false)
 const authModalOpen = ref(false)
 const categoryModalOpen = ref(false)
@@ -51,14 +53,21 @@ const activeCategoryId = ref('')
 const draggedCategoryId = ref<string | null>(null)
 const dragOverCategoryId = ref<string | null>(null)
 const faviconCache = new Map<string, string>()
+const searchTextCache = new WeakMap<LinkItem, string>()
 
 const visibleLinks = computed(() => {
-  const query = searchQuery.value.trim().toLocaleLowerCase()
+  const query = searchQuery.value.trim().toLowerCase()
   if (!query || externalSearch.value) return nav.links.value
-  return nav.links.value.filter(link =>
-    `${link.title} ${link.description || ''} ${link.url}`.toLocaleLowerCase().includes(query)
-  )
+  return nav.links.value.filter(link => searchableText(link).includes(query))
 })
+
+function searchableText(link: LinkItem) {
+  const cached = searchTextCache.get(link)
+  if (cached) return cached
+  const text = `${link.title} ${link.description || ''} ${link.url}`.toLowerCase()
+  searchTextCache.set(link, text)
+  return text
+}
 
 const linksByCategory = computed(() => {
   const grouped = new Map<string, LinkItem[]>()
@@ -271,9 +280,18 @@ function onSettingsSaved(settings: {
   document.title = nav.config.title
 }
 
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === '/' && document.activeElement?.tagName !== 'INPUT') {
+    event.preventDefault()
+    void nextTick(() => searchInput.value?.focus())
+  }
+  if (event.key === 'Escape') searchQuery.value = ''
+}
+
 onMounted(async () => {
   applyTheme()
   await nav.init()
+  if (!hasSavedViewMode) compact.value = nav.config.defaultViewMode === 'compact'
   const params = new URLSearchParams(location.search)
   const addUrl = params.get('add_url')
   if (addUrl) {
@@ -281,15 +299,10 @@ onMounted(async () => {
     linkModalOpen.value = true
     history.replaceState({}, '', location.pathname)
   }
-  window.addEventListener('keydown', async event => {
-    if (event.key === '/' && document.activeElement?.tagName !== 'INPUT') {
-      event.preventDefault()
-      await nextTick()
-      searchInput.value?.focus()
-    }
-    if (event.key === 'Escape') searchQuery.value = ''
-  })
+  window.addEventListener('keydown', handleGlobalKeydown)
 })
+
+onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown))
 </script>
 
 <template>
@@ -650,7 +663,7 @@ onMounted(async () => {
         showPinned: nav.config.showPinned,
         defaultViewMode: nav.config.defaultViewMode,
       }"
-      :save-config="nav.saveConfig"
+      :save-config-batch="nav.saveConfigBatch"
       @close="settingsOpen = false"
       @saved="onSettingsSaved"
     />
