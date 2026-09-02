@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "./hover-card.css";
 
 /* 强制设置浅色模式为默认 */
 html {
