@@ -4,17 +4,18 @@
 
 ## 特性
 
-- Vue 3 + TypeScript + Vite，使用 Composition API 管理状态
-- 分类侧栏与锚点导航，响应式适配桌面和移动端
+- Vue 3 + TypeScript + Vite，使用 Composition API 与组件化架构管理状态
+- 分类侧栏与锚点导航，支持分类排序与分类内网站卡片拖拽排序
+- 响应式卡片布局：网站卡片与分类卡片按设备尺寸自适应放大
 - 站内搜索，也可一键跳转 Google 互联网搜索
-- 网站卡片支持置顶、添加、编辑和删除
+- 网站卡片支持置顶、添加、编辑、删除和排序
 - 新增网站时自动获取 favicon，支持 EdgeOne Blob 缓存、Google、FaviconExtractor、自定义 URL/API
 - 管理登录与权限控制，登录状态保存在浏览器本地
 - localStorage 快速缓存，登录后自动同步 EdgeOne KV
 - 明暗主题、紧凑/详细视图、书签小程序参数预填
-- 设置面板支持网站标题、图标策略、默认视图和置顶区域配置
+- 重构后的设置面板，完整适配移动端（抽屉式导航、分组表单、主题令牌）
 - AI 辅助生成网站描述与分类建议，支持 Gemini、OpenAI 兼容 API、Claude
-- 保留 EdgeOne Pages Functions：认证、KV 存储、favicon 和上传接口
+- 保留 EdgeOne Pages Functions：认证、KV 存储、favicon 和上传接口，并提供升级后的 MCP Server
 
 ## 技术栈
 
@@ -64,33 +65,47 @@ npx edgeone-pages-mcp-fullstack --region china
 ## 项目结构
 
 ```text
-functions/api/          EdgeOne Pages API
-src/App.vue             Vue 应用界面
+functions/api/          EdgeOne Pages API（认证、KV 存储、favicon、上传、MCP）
+src/App.vue             Vue 应用入口界面
+src/components/         可复用 Vue 组件（设置面板、链接卡片网格等）
 src/composables/        Vue Composition API 状态与云端同步
-src/index.css           全局样式
+src/services/           服务层（AI、图标）
+src/utils/              URL 等工具函数
+src/index.css           全局样式与主题令牌
 src/main.ts             应用入口
 types.ts                链接、分类和配置类型及初始数据
 public/                 favicon、manifest 等静态资源
 vite.config.ts          Vite 配置
 ```
 
-## 许可证
+## 分类与排序
 
-本项目使用 [GLWTPL](https://github.com/me-shaon/GLWTPL) 许可证。
+- 侧栏中拖动分类（或使用上下按钮）即可调整分类顺序，顺序会同步到云端。
+- 登录后，网站卡片右上角提供拖动把手和上下箭头，可调整该分类下卡片的排列顺序。
+- 排序结果持久化到 KV，多设备登录后自动保持一致。
 
-## Remote MCP server
+## 远程 MCP Server
 
-CloudNav exposes a remote MCP endpoint at `/api/mcp`. After deploying the site, use:
+CloudNav 在 `/api/mcp` 暴露远程 MCP 端点。部署后使用：
 
 ```text
 https://YOUR_DOMAIN/api/mcp
 ```
 
-The endpoint supports MCP Streamable HTTP and provides `list_links`, `search_links`,
-`list_categories`, `add_link`, `update_link`, and `delete_link`. Read operations are public;
-write operations require the site admin password or auth token in an `Authorization: Bearer ...`
-header. The Settings panel contains a ready-to-copy client configuration for Claude Desktop,
-Cursor, and Cherry Studio.
+端点支持 MCP Streamable HTTP/SDK，并实现以下工具：
+
+- 读取（公开）：`list_links`、`search_links`、`list_categories`、`get_config`
+- 链接写入（需认证）：`add_link`、`update_link`、`delete_link`、`reorder_links`
+- 分类写入（需认证）：`add_category`、`update_category`、`delete_category`、`reorder_categories`
+- 配置写入（需认证）：`update_config`
+
+并暴露两个结构化资源：`cloudnav://categories` 与 `cloudnav://links`，可由客户端通过 `resources/list` 与 `resources/read` 读取。
+
+读操作公开可用；写操作需要在 `Authorization: Bearer <密码>` 头（或 `x-auth-password`）中携带站点管理密码。登录后的「设置 → MCP / EdgeOne 部署」面板提供了可直接复制的客户端配置（Claude Desktop、Cursor、Cherry Studio）。
+
+## 许可证
+
+本项目使用 [GLWTPL](https://github.com/me-shaon/GLWTPL) 许可证。
 
 ## Security notes
 

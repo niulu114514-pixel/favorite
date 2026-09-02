@@ -279,6 +279,25 @@ export function useCloudNav() {
     await persist()
   }
 
+  async function reorderLinks(categoryId: string, orderedIds: string[]) {
+    const position = new Map(orderedIds.map((id, index) => [id, index]))
+    const others: LinkItem[] = []
+    const categoryLinks: LinkItem[] = []
+    for (const link of links.value) {
+      ;(link.categoryId === categoryId ? categoryLinks : others).push(link)
+    }
+    categoryLinks.sort((a, b) => {
+      const pa = position.get(a.id)
+      const pb = position.get(b.id)
+      if (pa === undefined && pb === undefined) return 0
+      if (pa === undefined) return 1
+      if (pb === undefined) return -1
+      return pa - pb
+    })
+    links.value = [...others, ...categoryLinks]
+    await persist()
+  }
+
   async function removeCategory(id: string) {
     if (id === 'common') return
     links.value = links.value.map(link =>
@@ -326,6 +345,7 @@ export function useCloudNav() {
     togglePin,
     saveCategory,
     reorderCategories,
+    reorderLinks,
     removeCategory,
     persist,
     saveConfig,

@@ -11,9 +11,7 @@ import {
   LogOut,
   Menu,
   Moon,
-  MoreHorizontal,
   Pencil,
-  Pin,
   Plus,
   Search,
   Settings,
@@ -26,7 +24,9 @@ import {
 import type { Category, LinkItem } from '../types'
 import { useCloudNav } from './composables/useCloudNav'
 import SettingsPanel from './components/SettingsPanel.vue'
-import { fallbackIconUrl } from './services/iconService'
+import LinkGrid from './components/LinkGrid.vue'
+import { favicon, handleFaviconError } from './composables/useFavicon'
+import { safeTargetUrl } from './utils/url'
 import { generateLinkDescription, suggestCategory } from './services/aiService'
 
 const nav = useCloudNav()
@@ -59,7 +59,6 @@ let pressStartX = 0
 let pressStartY = 0
 let suppressCategoryClick = false
 const collapsedCategoryIds = ref<Set<string>>(loadCollapsedCategoryIds())
-const faviconCache = new Map<string, string>()
 const searchTextCache = new WeakMap<LinkItem, string>()
 
 const categoryMap = computed(
@@ -418,40 +417,6 @@ async function submitCategory() {
   categoryModalOpen.value = false
 }
 
-function favicon(link: LinkItem) {
-  const cacheKey = `${link.id}:${link.icon || ''}:${link.url}`
-  const cached = faviconCache.get(cacheKey)
-  if (cached) return cached
-  if (link.icon) {
-    faviconCache.set(cacheKey, link.icon)
-    return link.icon
-  }
-  try {
-    const source = `/api/favicon?domain=${encodeURIComponent(new URL(link.url).hostname)}`
-    faviconCache.set(cacheKey, source)
-    return source
-  } catch {
-    return '/favicon.ico'
-  }
-}
-
-function safeTargetUrl(url: string) {
-  try {
-    const parsed = new URL(url, window.location.origin)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-      ? parsed.href
-      : `${window.location.origin}/`
-  } catch {
-    return `${window.location.origin}/`
-  }
-}
-
-function fallbackIcon(event: Event, link: LinkItem) {
-  const image = event.target as HTMLImageElement
-  const fallback = fallbackIconUrl(link.url)
-  if (image.src !== new URL(fallback, window.location.origin).href) image.src = fallback
-}
-
 function onSettingsSaved(settings: {
   ai: typeof nav.config.ai
   icon: typeof nav.config.icon
@@ -687,7 +652,7 @@ onBeforeUnmount(() => {
                   decoding="async"
                   width="39"
                   height="39"
-                  @error="fallbackIcon($event, link)"
+                  @error="handleFaviconError($event, link)"
                 />
                 <div>
                   <strong>{{ link.title }}</strong>
@@ -735,54 +700,16 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </div>
-              <div v-if="categoryLinks(category.id).length" class="link-grid" :class="{ compact }">
-                <article
-                  v-for="link in categoryLinks(category.id)"
-                  :key="link.id"
-                  v-memo="[
-                    link.id,
-                    link.title,
-                    link.description,
-                    link.url,
-                    link.icon,
-                    link.pinned,
-                    compact,
-                    nav.token.value,
-                  ]"
-                  class="link-card-wrap"
-                >
-                  <a
-                    class="link-card"
-                    :href="safeTargetUrl(link.url)"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <img
-                      :src="favicon(link)"
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      width="39"
-                      height="39"
-                      @error="fallbackIcon($event, link)"
-                    />
-                    <div>
-                      <strong>{{ link.title }}</strong>
-                      <p v-if="!compact">{{ link.description || link.url }}</p>
-                    </div>
-                  </a>
-                  <div v-if="nav.token.value" class="card-actions">
-                    <button
-                      :title="link.pinned ? '取消置顶' : '置顶'"
-                      @click="nav.togglePin(link.id)"
-                    >
-                      <Pin :size="15" :fill="link.pinned ? 'currentColor' : 'none'" />
-                    </button>
-                    <button title="编辑" @click="openLinkModal(link)"><Pencil :size="15" /></button>
-                    <button title="删除" @click="deleteLink(link)"><Trash2 :size="15" /></button>
-                  </div>
-                </article>
-              </div>
+              <LinkGrid
+                v-if="categoryLinks(category.id).length"
+                :links="categoryLinks(category.id)"
+                :compact="compact"
+                :can-manage="Boolean(nav.token.value)"
+                @pin="nav.togglePin"
+                @edit="openLinkModal"
+                @delete="deleteLink"
+                @reorder="orderedIds => nav.reorderLinks(category.id, orderedIds)"
+              />
               <button
                 v-else-if="nav.token.value"
                 class="empty-state"
@@ -1093,6 +1020,12 @@ onBeforeUnmount(() => {
 :global(body.sorting-categories) * {
   cursor: grabbing;
 }
+:global(body.sorting-links) {
+  cursor: grabbing;
+}
+:global(body.sorting-links) * {
+  cursor: grabbing;
+}
 .category-toggle {
   width: 22px;
   height: 22px;
@@ -1232,7 +1165,7 @@ onBeforeUnmount(() => {
   color: #526076;
 }
 .content {
-  max-width: 1480px;
+  max-width: 1600px;
   margin: auto;
   padding: 30px 32px 80px;
 }
@@ -1276,12 +1209,13 @@ onBeforeUnmount(() => {
   gap: 16px;
 }
 .pinned-section .link-card {
-  min-height: 94px;
-  padding: 17px;
+  min-height: clamp(84px, 9vw, 116px);
+  padding: clamp(15px, 2vw, 24px);
+  gap: clamp(14px, 1.6vw, 20px);
 }
 .pinned-section .link-grid.compact .link-card {
-  min-height: 70px;
-  padding: 12px 14px;
+  min-height: 64px;
+  padding: 11px 14px;
 }
 .subcategory-section {
   margin-left: 22px;
@@ -1304,12 +1238,12 @@ onBeforeUnmount(() => {
 }
 .link-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: clamp(12px, 1.4vw, 18px);
 }
 .link-grid.compact {
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 9px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
+  gap: 10px;
 }
 .link-card-wrap {
   position: relative;
@@ -1343,29 +1277,29 @@ onBeforeUnmount(() => {
   box-shadow: 0 8px 24px rgba(42, 60, 100, 0.1);
 }
 .link-card img {
-  width: 39px;
-  height: 39px;
+  width: clamp(40px, 4.5vw, 52px);
+  height: clamp(40px, 4.5vw, 52px);
   object-fit: contain;
-  border-radius: 9px;
+  border-radius: 10px;
   background: #f4f6f9;
-  padding: 5px;
+  padding: 6px;
 }
 .compact .link-card img {
-  width: 31px;
-  height: 31px;
+  width: 32px;
+  height: 32px;
 }
 .link-card div {
   min-width: 0;
 }
 .link-card strong {
-  font-size: 14px;
+  font-size: clamp(14px, 1.5vw, 17px);
   display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .link-card p {
-  font-size: 12px;
+  font-size: clamp(12px, 1.15vw, 13.5px);
   color: #7a8699;
   margin: 5px 0 0;
   white-space: nowrap;
@@ -1673,15 +1607,15 @@ html.dark .secondary-button {
     padding: 22px 16px 70px;
   }
   .link-grid {
-    grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
   }
   .link-card {
-    min-height: 68px;
-    padding: 11px;
+    min-height: 72px;
+    padding: 12px;
   }
   .link-card img {
-    width: 34px;
-    height: 34px;
+    width: 38px;
+    height: 38px;
   }
   .link-card p {
     display: none;
