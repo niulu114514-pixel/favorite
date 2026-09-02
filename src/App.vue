@@ -5,6 +5,7 @@ import {
   Check,
   ChevronRight,
   Folder,
+  GripVertical,
   Grid2X2,
   LayoutList,
   LogIn,
@@ -47,6 +48,8 @@ const aiBusy = ref(false)
 const aiError = ref('')
 const searchInput = ref<HTMLInputElement>()
 const activeCategoryId = ref('')
+const draggedCategoryId = ref<string | null>(null)
+const dragOverCategoryId = ref<string | null>(null)
 
 const visibleLinks = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase()
@@ -105,6 +108,49 @@ function jumpTo(id: string) {
   const top = target.getBoundingClientRect().top + window.scrollY - headerOffset
   window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   sidebarOpen.value = false
+}
+
+function startCategoryDrag(event: DragEvent, id: string) {
+  draggedCategoryId.value = id
+  dragOverCategoryId.value = id
+  event.dataTransfer?.setData('text/plain', id)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+}
+
+function setCategoryDragOver(id: string) {
+  if (draggedCategoryId.value && draggedCategoryId.value !== id) dragOverCategoryId.value = id
+}
+
+async function dropCategory(id: string) {
+  const draggedId = draggedCategoryId.value
+  if (!draggedId || draggedId === id) return
+  const orderedIds = nav.categories.value.map(category => category.id)
+  const from = orderedIds.indexOf(draggedId)
+  const to = orderedIds.indexOf(id)
+  if (from < 0 || to < 0) return
+  orderedIds.splice(from, 1)
+  orderedIds.splice(to, 0, draggedId)
+  await nav.reorderCategories(orderedIds)
+  dragOverCategoryId.value = null
+}
+
+function endCategoryDrag() {
+  draggedCategoryId.value = null
+  dragOverCategoryId.value = null
+}
+
+async function moveCategoryByKeyboard(event: KeyboardEvent, id: string) {
+  if (!event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return
+  event.preventDefault()
+  const orderedIds = nav.categories.value.map(category => category.id)
+  const index = orderedIds.indexOf(id)
+  const nextIndex = event.key === 'ArrowUp' ? index - 1 : index + 1
+  if (index < 0 || nextIndex < 0 || nextIndex >= orderedIds.length) return
+  const swapped = orderedIds[index]
+  orderedIds[index] = orderedIds[nextIndex]
+  orderedIds[nextIndex] = swapped
+  await nav.reorderCategories(orderedIds)
+  activeCategoryId.value = id
 }
 
 function openLinkModal(link?: LinkItem) {
@@ -251,10 +297,23 @@ onMounted(async () => {
           v-for="category in nav.categories.value"
           :key="category.id"
           type="button"
-          :class="{ active: activeCategoryId === category.id }"
           :aria-current="activeCategoryId === category.id ? 'location' : undefined"
+          :draggable="true"
+          :title="'拖动调整分类顺序（Alt+↑/↓）'"
+          :class="{
+            active: activeCategoryId === category.id,
+            dragging: draggedCategoryId === category.id,
+            'drag-over': dragOverCategoryId === category.id && draggedCategoryId !== category.id,
+          }"
+          @dragstart="startCategoryDrag($event, category.id)"
+          @dragenter.prevent="setCategoryDragOver(category.id)"
+          @dragover.prevent="setCategoryDragOver(category.id)"
+          @drop.prevent="dropCategory(category.id)"
+          @dragend="endCategoryDrag"
+          @keydown="moveCategoryByKeyboard($event, category.id)"
           @click.prevent="jumpTo(category.id)"
         >
+          <GripVertical class="drag-handle" :size="15" aria-hidden="true" />
           <Folder :size="17" /><span>{{ category.name }}</span
           ><ChevronRight :size="15" />
         </button>
@@ -662,8 +721,12 @@ onMounted(async () => {
   border-radius: 9px;
   text-align: left;
   cursor: pointer;
-  transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease,
-    color 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 .category-nav button:hover,
 .sidebar-footer button:hover {
@@ -681,6 +744,21 @@ onMounted(async () => {
 }
 .category-nav button span {
   flex: 1;
+}
+.category-nav button.dragging {
+  opacity: 0.45;
+}
+.category-nav button.drag-over {
+  border-color: rgba(79, 124, 255, 0.7);
+  box-shadow: inset 0 2px 0 #4f7cff;
+}
+.drag-handle {
+  flex: 0 0 auto;
+  color: #a2adbd;
+  cursor: grab;
+}
+.category-nav button:active .drag-handle {
+  cursor: grabbing;
 }
 .sidebar-footer {
   padding: 12px 10px;
@@ -813,7 +891,9 @@ onMounted(async () => {
   scroll-margin-top: 84px;
   margin-bottom: 35px;
   border-radius: 16px;
-  transition: background-color 0.25s ease, box-shadow 0.25s ease;
+  transition:
+    background-color 0.25s ease,
+    box-shadow 0.25s ease;
 }
 .category-section.is-active {
   background: rgba(123, 156, 255, 0.07);
@@ -876,7 +956,10 @@ onMounted(async () => {
   border-radius: 13px;
   text-decoration: none;
   color: inherit;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
   box-shadow: 0 2px 5px rgba(28, 39, 60, 0.025);
 }
 .compact .link-card {
@@ -1136,6 +1219,9 @@ html.dark .category-nav button.active {
   border-color: rgba(145, 171, 246, 0.38);
   color: #d8e3ff;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+}
+html.dark .drag-handle {
+  color: #77849a;
 }
 html.dark .brand,
 html.dark .sidebar-footer {
