@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   Bookmark,
   Check,
@@ -35,7 +35,9 @@ const searchQuery = ref('')
 const externalSearch = ref(false)
 const sidebarOpen = ref(false)
 const dark = ref(localStorage.getItem('cloudnav_theme_preference') === 'dark')
-const compact = ref(localStorage.getItem('cloudnav_view_mode') === 'compact')
+const savedViewMode = localStorage.getItem('cloudnav_view_mode')
+const hasSavedViewMode = savedViewMode === 'compact' || savedViewMode === 'detailed'
+const compact = ref(savedViewMode === 'compact')
 const linkModalOpen = ref(false)
 const authModalOpen = ref(false)
 const categoryModalOpen = ref(false)
@@ -51,14 +53,21 @@ const activeCategoryId = ref('')
 const draggedCategoryId = ref<string | null>(null)
 const dragOverCategoryId = ref<string | null>(null)
 const faviconCache = new Map<string, string>()
+const searchTextCache = new WeakMap<LinkItem, string>()
 
 const visibleLinks = computed(() => {
-  const query = searchQuery.value.trim().toLocaleLowerCase()
+  const query = searchQuery.value.trim().toLowerCase()
   if (!query || externalSearch.value) return nav.links.value
-  return nav.links.value.filter(link =>
-    `${link.title} ${link.description || ''} ${link.url}`.toLocaleLowerCase().includes(query)
-  )
+  return nav.links.value.filter(link => searchableText(link).includes(query))
 })
+
+function searchableText(link: LinkItem) {
+  const cached = searchTextCache.get(link)
+  if (cached) return cached
+  const text = `${link.title} ${link.description || ''} ${link.url}`.toLowerCase()
+  searchTextCache.set(link, text)
+  return text
+}
 
 const linksByCategory = computed(() => {
   const grouped = new Map<string, LinkItem[]>()
@@ -271,9 +280,18 @@ function onSettingsSaved(settings: {
   document.title = nav.config.title
 }
 
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === '/' && document.activeElement?.tagName !== 'INPUT') {
+    event.preventDefault()
+    void nextTick(() => searchInput.value?.focus())
+  }
+  if (event.key === 'Escape') searchQuery.value = ''
+}
+
 onMounted(async () => {
   applyTheme()
   await nav.init()
+  if (!hasSavedViewMode) compact.value = nav.config.defaultViewMode === 'compact'
   const params = new URLSearchParams(location.search)
   const addUrl = params.get('add_url')
   if (addUrl) {
@@ -281,15 +299,10 @@ onMounted(async () => {
     linkModalOpen.value = true
     history.replaceState({}, '', location.pathname)
   }
-  window.addEventListener('keydown', async event => {
-    if (event.key === '/' && document.activeElement?.tagName !== 'INPUT') {
-      event.preventDefault()
-      await nextTick()
-      searchInput.value?.focus()
-    }
-    if (event.key === 'Escape') searchQuery.value = ''
-  })
+  window.addEventListener('keydown', handleGlobalKeydown)
 })
+
+onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown))
 </script>
 
 <template>
@@ -445,87 +458,88 @@ onMounted(async () => {
             </div>
           </section>
 
-          <section
-            v-for="category in nav.categories.value"
-            :id="`category-${category.id}`"
-            :key="category.id"
-            class="category-section"
-            :class="{ 'is-active': activeCategoryId === category.id }"
-          >
-            <div class="section-title">
-              <h2>
-                <Folder :size="20" /> {{ category.name }}
-                <span>{{ categoryLinks(category.id).length }}</span>
-              </h2>
-              <div v-if="nav.token.value" class="section-actions">
-                <button
-                  class="icon-button small"
-                  title="编辑分类"
-                  @click="openCategoryModal(category)"
-                >
-                  <Pencil />
-                </button>
-                <button
-                  v-if="category.id !== 'common'"
-                  class="icon-button small danger"
-                  title="删除分类"
-                  @click="deleteCategory(category)"
-                >
-                  <Trash2 />
-                </button>
-              </div>
-            </div>
-            <div v-if="categoryLinks(category.id).length" class="link-grid" :class="{ compact }">
-              <article
-                v-for="link in categoryLinks(category.id)"
-                :key="link.id"
-                v-memo="[
-                  link.id,
-                  link.title,
-                  link.description,
-                  link.url,
-                  link.icon,
-                  link.pinned,
-                  compact,
-                  nav.token.value,
-                ]"
-                class="link-card-wrap"
-              >
-                <a class="link-card" :href="link.url" target="_blank" rel="noopener noreferrer">
-                  <img
-                    :src="favicon(link)"
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    width="39"
-                    height="39"
-                    @error="fallbackIcon($event, link)"
-                  />
-                  <div>
-                    <strong>{{ link.title }}</strong>
-                    <p v-if="!compact">{{ link.description || link.url }}</p>
-                  </div>
-                </a>
-                <div v-if="nav.token.value" class="card-actions">
-                  <button
-                    :title="link.pinned ? '取消置顶' : '置顶'"
-                    @click="nav.togglePin(link.id)"
-                  >
-                    <Pin :size="15" :fill="link.pinned ? 'currentColor' : 'none'" />
-                  </button>
-                  <button title="编辑" @click="openLinkModal(link)"><Pencil :size="15" /></button>
-                  <button title="删除" @click="deleteLink(link)"><Trash2 :size="15" /></button>
-                </div>
-              </article>
-            </div>
-            <button
-              v-else-if="nav.token.value"
-              class="empty-state"
-              @click="openLinkModalForCategory(category.id)"
+          <template v-for="category in nav.categories.value" :key="category.id">
+            <section
+              v-if="!searchQuery.trim() || categoryLinks(category.id).length"
+              :id="`category-${category.id}`"
+              class="category-section"
+              :class="{ 'is-active': activeCategoryId === category.id }"
             >
-              <Plus /> 向此分类添加网站
-            </button>
-          </section>
+              <div class="section-title">
+                <h2>
+                  <Folder :size="20" /> {{ category.name }}
+                  <span>{{ categoryLinks(category.id).length }}</span>
+                </h2>
+                <div v-if="nav.token.value" class="section-actions">
+                  <button
+                    class="icon-button small"
+                    title="编辑分类"
+                    @click="openCategoryModal(category)"
+                  >
+                    <Pencil />
+                  </button>
+                  <button
+                    v-if="category.id !== 'common'"
+                    class="icon-button small danger"
+                    title="删除分类"
+                    @click="deleteCategory(category)"
+                  >
+                    <Trash2 />
+                  </button>
+                </div>
+              </div>
+              <div v-if="categoryLinks(category.id).length" class="link-grid" :class="{ compact }">
+                <article
+                  v-for="link in categoryLinks(category.id)"
+                  :key="link.id"
+                  v-memo="[
+                    link.id,
+                    link.title,
+                    link.description,
+                    link.url,
+                    link.icon,
+                    link.pinned,
+                    compact,
+                    nav.token.value,
+                  ]"
+                  class="link-card-wrap"
+                >
+                  <a class="link-card" :href="link.url" target="_blank" rel="noopener noreferrer">
+                    <img
+                      :src="favicon(link)"
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      width="39"
+                      height="39"
+                      @error="fallbackIcon($event, link)"
+                    />
+                    <div>
+                      <strong>{{ link.title }}</strong>
+                      <p v-if="!compact">{{ link.description || link.url }}</p>
+                    </div>
+                  </a>
+                  <div v-if="nav.token.value" class="card-actions">
+                    <button
+                      :title="link.pinned ? '取消置顶' : '置顶'"
+                      @click="nav.togglePin(link.id)"
+                    >
+                      <Pin :size="15" :fill="link.pinned ? 'currentColor' : 'none'" />
+                    </button>
+                    <button title="编辑" @click="openLinkModal(link)"><Pencil :size="15" /></button>
+                    <button title="删除" @click="deleteLink(link)"><Trash2 :size="15" /></button>
+                  </div>
+                </article>
+              </div>
+              <button
+                v-else-if="nav.token.value"
+                class="empty-state"
+                @click="openLinkModalForCategory(category.id)"
+              >
+                <Plus /> 向此分类添加网站
+              </button>
+            </section>
+          </template>
           <div v-if="searchQuery && !visibleLinks.length" class="no-results">
             <Search />
             <h2>没有找到相关网站</h2>
@@ -650,7 +664,7 @@ onMounted(async () => {
         showPinned: nav.config.showPinned,
         defaultViewMode: nav.config.defaultViewMode,
       }"
-      :save-config="nav.saveConfig"
+      :save-config-batch="nav.saveConfigBatch"
       @close="settingsOpen = false"
       @saved="onSettingsSaved"
     />
@@ -1080,6 +1094,7 @@ onMounted(async () => {
   background: linear-gradient(90deg, #e9edf2 25%, #f5f6f8 50%, #e9edf2 75%);
   background-size: 200% 100%;
   animation: shine 1.5s infinite;
+  border: 1px solid rgba(210, 218, 231, 0.8);
 }
 .no-results {
   text-align: center;
@@ -1257,6 +1272,10 @@ html.dark .sidebar-footer {
 html.dark .pinned-section {
   background: linear-gradient(135deg, #202a3f, #29243a);
   border-color: #35415e;
+}
+html.dark .skeleton {
+  background: linear-gradient(90deg, #222b38 25%, #303b4b 50%, #222b38 75%);
+  border-color: #364355;
 }
 html.dark .category-section.is-active {
   background: rgba(115, 145, 224, 0.1);

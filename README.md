@@ -77,6 +77,7 @@ vite.config.ts          Vite 配置
 ## 许可证
 
 本项目使用 [GLWTPL](https://github.com/me-shaon/GLWTPL) 许可证。
+
 ## Remote MCP server
 
 CloudNav exposes a remote MCP endpoint at `/api/mcp`. After deploying the site, use:
@@ -90,3 +91,17 @@ The endpoint supports MCP Streamable HTTP and provides `list_links`, `search_lin
 write operations require the site admin password or auth token in an `Authorization: Bearer ...`
 header. The Settings panel contains a ready-to-copy client configuration for Claude Desktop,
 Cursor, and Cherry Studio.
+
+## Security notes
+
+- Public configuration responses redact API keys, passwords, tokens, credentials, and custom headers.
+- Generic KV reads are not exposed; administrative reads and writes require authentication.
+- WebDAV and icon import requests require authentication, public HTTPS URLs, timeouts, and size limits.
+- Login attempts are rate-limited per client address.
+
+## WebDAV backup API
+
+`/api/webdav` is an optional server-side backup bridge. An authenticated client can
+check a WebDAV directory, upload `cloudnav_backup.json`, or download it for restore.
+It is not required for normal bookmark browsing; disable or remove the endpoint if you
+do not use WebDAV backups.
