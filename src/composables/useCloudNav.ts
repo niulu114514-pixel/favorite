@@ -6,6 +6,17 @@ import { DEFAULT_ICON_CONFIG, getIconUrl } from '../services/iconService'
 
 const DATA_KEY = 'cloudnav_data_cache'
 const AUTH_KEY = 'cloudnav_auth_token'
+const REQUEST_TIMEOUT = 6500
+
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
+  try {
+    return await fetch(input, { ...init, signal: controller.signal })
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
 
 export function useCloudNav() {
   const links = ref<LinkItem[]>([])
@@ -58,10 +69,9 @@ export function useCloudNav() {
     links.value = local.links
     categories.value = local.categories
     try {
-      const configKeys = ['ai', 'icon', 'view', 'ui']
-      const [dataResponse, ...configResponses] = await Promise.all([
-        fetch('/api/storage?getConfig=true&readOnly=true'),
-        ...configKeys.map(key => fetch(`/api/storage?getConfig=${key}`)),
+      const [dataResponse, configResponse] = await Promise.all([
+        fetchWithTimeout('/api/storage?getConfig=true&readOnly=true'),
+        fetchWithTimeout('/api/storage?getConfig=all'),
       ])
       if (dataResponse.ok) {
         const cloud = await dataResponse.json()
@@ -72,13 +82,11 @@ export function useCloudNav() {
           saveLocal()
         }
       }
-      const loaded = await Promise.all(
-        configResponses.map(response => (response.ok ? response.json() : {}))
-      )
-      const ai = (loaded[0] || {}) as Partial<AIConfig>
-      const icon = (loaded[1] || {}) as Partial<IconConfig>
-      const view = (loaded[2] || {}) as { defaultMode?: 'compact' | 'detailed' }
-      const ui = (loaded[3] || {}) as { showPinnedWebsites?: boolean }
+      const loaded = configResponse.ok ? await configResponse.json() : {}
+      const ai = (loaded.ai || {}) as Partial<AIConfig>
+      const icon = (loaded.icon || {}) as Partial<IconConfig>
+      const view = (loaded.view || {}) as { defaultMode?: 'compact' | 'detailed' }
+      const ui = (loaded.ui || {}) as { showPinnedWebsites?: boolean }
       Object.assign(config.ai, ai)
       Object.assign(config.icon, icon)
       config.title = ai.websiteTitle || config.title

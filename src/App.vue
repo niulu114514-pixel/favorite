@@ -670,13 +670,11 @@ onMounted(async () => {
   position: fixed;
   inset: 0 auto 0 0;
   width: 250px;
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.72), rgba(246, 249, 255, 0.54));
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(246, 249, 255, 0.86));
   border-right: 1px solid rgba(255, 255, 255, 0.72);
   box-shadow:
     12px 0 38px rgba(48, 65, 104, 0.1),
     inset -1px 0 rgba(255, 255, 255, 0.38);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
   display: flex;
   flex-direction: column;
   z-index: 40;
@@ -971,6 +969,7 @@ onMounted(async () => {
 }
 .link-card-wrap {
   position: relative;
+  contain: layout paint;
 }
 .link-card {
   min-height: 82px;
@@ -1198,7 +1197,7 @@ html.dark .app-shell {
     radial-gradient(circle at 88% 18%, rgba(135, 78, 174, 0.18), transparent 26%);
 }
 html.dark .sidebar {
-  background: linear-gradient(155deg, rgba(33, 42, 55, 0.76), rgba(24, 31, 41, 0.64));
+  background: linear-gradient(155deg, rgba(33, 42, 55, 0.94), rgba(24, 31, 41, 0.9));
   border-color: rgba(172, 194, 230, 0.16);
   box-shadow:
     12px 0 42px rgba(0, 0, 0, 0.25),

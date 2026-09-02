@@ -196,6 +196,10 @@ export async function onRequest(context) {
       }
 
       // 获取全部数据
+      if (getConfig === 'all') {
+        return jsonResponse(await mergeAllConfigSections(kv), 200, corsHeaders);
+      }
+
       if (getConfig === 'true') {
         const categoriesData = await kv.get(STORAGE_KEYS.CATEGORIES_CONFIG_KEY);
         const categories = categoriesData ? JSON.parse(categoriesData) : [];
