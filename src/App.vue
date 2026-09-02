@@ -52,6 +52,7 @@ const searchInput = ref<HTMLInputElement>()
 const activeCategoryId = ref('')
 const draggedCategoryId = ref<string | null>(null)
 const dragOverCategoryId = ref<string | null>(null)
+const collapsedCategoryIds = ref<Set<string>>(loadCollapsedCategoryIds())
 const faviconCache = new Map<string, string>()
 const searchTextCache = new WeakMap<LinkItem, string>()
 
@@ -76,6 +77,28 @@ const childCategories = computed(() => {
 
 function categoryChildren(categoryId: string) {
   return childCategories.value.get(categoryId) || []
+}
+
+function loadCollapsedCategoryIds() {
+  try {
+    const value = JSON.parse(localStorage.getItem('cloudnav_collapsed_categories') || '[]')
+    return new Set<string>(Array.isArray(value) ? value : [])
+  } catch {
+    return new Set<string>()
+  }
+}
+
+function isCategoryExpanded(categoryId: string) {
+  return !collapsedCategoryIds.value.has(categoryId)
+}
+
+function toggleCategoryExpanded(event: Event, categoryId: string) {
+  event.stopPropagation()
+  const next = new Set(collapsedCategoryIds.value)
+  if (next.has(categoryId)) next.delete(categoryId)
+  else next.add(categoryId)
+  collapsedCategoryIds.value = next
+  localStorage.setItem('cloudnav_collapsed_categories', JSON.stringify([...next]))
 }
 
 const visibleLinks = computed(() => {
@@ -144,10 +167,14 @@ function jumpTo(id: string) {
 }
 
 function startCategoryDrag(event: DragEvent, id: string) {
+  event.stopPropagation()
   draggedCategoryId.value = id
   dragOverCategoryId.value = id
-  event.dataTransfer?.setData('text/plain', id)
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+  if (event.dataTransfer) {
+    event.dataTransfer.setData('text/plain', id)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.dropEffect = 'move'
+  }
 }
 
 function setCategoryDragOver(id: string) {
@@ -156,15 +183,18 @@ function setCategoryDragOver(id: string) {
 
 async function dropCategory(id: string) {
   const draggedId = draggedCategoryId.value
-  if (!draggedId || draggedId === id) return
-  const orderedIds = nav.categories.value.map(category => category.id)
-  const from = orderedIds.indexOf(draggedId)
-  const to = orderedIds.indexOf(id)
-  if (from < 0 || to < 0) return
-  orderedIds.splice(from, 1)
-  orderedIds.splice(to, 0, draggedId)
-  await nav.reorderCategories(orderedIds)
-  dragOverCategoryId.value = null
+  try {
+    if (!draggedId || draggedId === id) return
+    const orderedIds = nav.categories.value.map(category => category.id)
+    const from = orderedIds.indexOf(draggedId)
+    const to = orderedIds.indexOf(id)
+    if (from < 0 || to < 0) return
+    orderedIds.splice(from, 1)
+    orderedIds.splice(to, 0, draggedId)
+    await nav.reorderCategories(orderedIds)
+  } finally {
+    endCategoryDrag()
+  }
 }
 
 function endCategoryDrag() {
@@ -184,6 +214,10 @@ async function moveCategoryByKeyboard(event: KeyboardEvent, id: string) {
   orderedIds[nextIndex] = swapped
   await nav.reorderCategories(orderedIds)
   activeCategoryId.value = id
+}
+
+function cancelCategoryDrag() {
+  if (draggedCategoryId.value) endCategoryDrag()
 }
 
 function openLinkModal(link?: LinkItem) {
@@ -331,9 +365,15 @@ onMounted(async () => {
     history.replaceState({}, '', location.pathname)
   }
   window.addEventListener('keydown', handleGlobalKeydown)
+  window.addEventListener('dragend', cancelCategoryDrag)
+  window.addEventListener('drop', cancelCategoryDrag)
 })
 
-onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
+  window.removeEventListener('dragend', cancelCategoryDrag)
+  window.removeEventListener('drop', cancelCategoryDrag)
+})
 </script>
 
 <template>
@@ -350,50 +390,76 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
           <button
             type="button"
             :aria-current="activeCategoryId === category.id ? 'location' : undefined"
-            :draggable="true"
+            :aria-expanded="
+              categoryChildren(category.id).length ? isCategoryExpanded(category.id) : undefined
+            "
             :title="'拖动调整分类顺序（Alt+↑/↓）'"
             :class="{
               active: activeCategoryId === category.id,
               dragging: draggedCategoryId === category.id,
               'drag-over': dragOverCategoryId === category.id && draggedCategoryId !== category.id,
             }"
-            @dragstart="startCategoryDrag($event, category.id)"
             @dragenter.prevent="setCategoryDragOver(category.id)"
             @dragover.prevent="setCategoryDragOver(category.id)"
             @drop.prevent="dropCategory(category.id)"
-            @dragend="endCategoryDrag"
             @keydown="moveCategoryByKeyboard($event, category.id)"
             @click.prevent="jumpTo(category.id)"
           >
-            <GripVertical class="drag-handle" :size="15" aria-hidden="true" />
+            <span
+              class="drag-handle"
+              draggable="true"
+              aria-hidden="true"
+              @dragstart="startCategoryDrag($event, category.id)"
+              @dragend="endCategoryDrag"
+              @click.stop
+              ><GripVertical :size="15" aria-hidden="true"
+            /></span>
             <Folder :size="17" /><span>{{ category.name }}</span
-            ><ChevronRight :size="15" />
+            ><span
+              v-if="categoryChildren(category.id).length"
+              class="category-toggle"
+              role="button"
+              tabindex="0"
+              :aria-label="isCategoryExpanded(category.id) ? '收起二级分类' : '展开二级分类'"
+              @click.stop="toggleCategoryExpanded($event, category.id)"
+              @keydown.enter.stop="toggleCategoryExpanded($event, category.id)"
+              @keydown.space.prevent.stop="toggleCategoryExpanded($event, category.id)"
+              ><ChevronRight
+                :size="15"
+                :class="{ expanded: isCategoryExpanded(category.id) }" /></span
+            ><ChevronRight v-else :size="15" />
           </button>
-          <button
-            v-for="child in categoryChildren(category.id)"
-            :key="child.id"
-            type="button"
-            class="subcategory"
-            :aria-current="activeCategoryId === child.id ? 'location' : undefined"
-            :draggable="true"
-            :title="'拖动调整分类顺序（Alt+↑/↓）'"
-            :class="{
-              active: activeCategoryId === child.id,
-              dragging: draggedCategoryId === child.id,
-              'drag-over': dragOverCategoryId === child.id && draggedCategoryId !== child.id,
-            }"
-            @dragstart="startCategoryDrag($event, child.id)"
-            @dragenter.prevent="setCategoryDragOver(child.id)"
-            @dragover.prevent="setCategoryDragOver(child.id)"
-            @drop.prevent="dropCategory(child.id)"
-            @dragend="endCategoryDrag"
-            @keydown="moveCategoryByKeyboard($event, child.id)"
-            @click.prevent="jumpTo(child.id)"
-          >
-            <GripVertical class="drag-handle" :size="15" aria-hidden="true" />
-            <Folder :size="16" /><span>{{ child.name }}</span
-            ><ChevronRight :size="15" />
-          </button>
+          <template v-for="child in categoryChildren(category.id)" :key="child.id">
+            <button
+              v-if="isCategoryExpanded(category.id)"
+              type="button"
+              class="subcategory"
+              :aria-current="activeCategoryId === child.id ? 'location' : undefined"
+              :title="'拖动调整分类顺序（Alt+↑/↓）'"
+              :class="{
+                active: activeCategoryId === child.id,
+                dragging: draggedCategoryId === child.id,
+                'drag-over': dragOverCategoryId === child.id && draggedCategoryId !== child.id,
+              }"
+              @dragenter.prevent="setCategoryDragOver(child.id)"
+              @dragover.prevent="setCategoryDragOver(child.id)"
+              @drop.prevent="dropCategory(child.id)"
+              @keydown="moveCategoryByKeyboard($event, child.id)"
+              @click.prevent="jumpTo(child.id)"
+            >
+              <span
+                class="drag-handle"
+                draggable="true"
+                aria-hidden="true"
+                @dragstart="startCategoryDrag($event, child.id)"
+                @dragend="endCategoryDrag"
+                @click.stop
+                ><GripVertical :size="15" aria-hidden="true"
+              /></span>
+              <Folder :size="16" /><span>{{ child.name }}</span
+              ><ChevronRight :size="15" />
+            </button>
+          </template>
         </template>
       </nav>
       <div class="sidebar-footer">
@@ -877,8 +943,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
 }
 .drag-handle {
   flex: 0 0 auto;
+  display: grid;
   color: #a2adbd;
   cursor: grab;
+  user-select: none;
+}
+.category-toggle {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.category-toggle:hover {
+  background: rgba(79, 124, 255, 0.12);
+}
+.category-toggle svg {
+  transition: transform 0.15s ease;
+}
+.category-toggle svg.expanded {
+  transform: rotate(90deg);
 }
 .category-nav button:active .drag-handle {
   cursor: grabbing;
