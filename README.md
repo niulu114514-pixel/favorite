@@ -4,24 +4,37 @@
 
 ## 特性
 
-- Vue 3 + TypeScript + Vite，使用 Composition API 与组件化架构管理状态
-- 分类侧栏与锚点导航，支持分类排序与分类内网站卡片拖拽排序
-- 响应式卡片布局：网站卡片与分类卡片按设备尺寸自适应放大
-- 站内搜索，也可一键跳转 Google 互联网搜索
-- 网站卡片支持置顶、添加、编辑、删除和排序
-- 新增网站时自动获取 favicon，支持 EdgeOne Blob 缓存、Google、FaviconExtractor、自定义 URL/API
-- 管理登录与权限控制，登录状态保存在浏览器本地
-- localStorage 快速缓存，登录后自动同步 EdgeOne KV
-- 明暗主题、紧凑/详细视图、书签小程序参数预填
-- 重构后的设置面板，完整适配移动端（抽屉式导航、分组表单、主题令牌）
-- AI 辅助生成网站描述与分类建议，支持 Gemini、OpenAI 兼容 API、Claude
-- 保留 EdgeOne Pages Functions：认证、KV 存储、favicon 和上传接口，并提供升级后的 MCP Server
+* Vue 3 + TypeScript + Vite，使用 Composition API 与组件化架构管理状态
+
+* 8分类侧栏与锚点导航，支持分类排序与分类内网站卡片拖拽排序
+
+* 响应式卡片布局：网站卡片与分类卡片按设备尺寸自适应放大
+
+* 站内搜索，也可一键跳转 Google 互联网搜索
+
+* 网站卡片支持置顶、添加、编辑、删除和排序
+
+* 新增网站时自动获取 favicon，支持 EdgeOne Blob 缓存、Google、FaviconExtractor、自定义 URL/API
+
+* 管理登录与权限控制，登录状态保存在浏览器本地
+
+* localStorage 快速缓存，登录后自动同步 EdgeOne KV
+
+* 明暗主题、紧凑/详细视图、书签小程序参数预填
+
+* 重构后的设置面板，完整适配移动端（抽屉式导航、分组表单、主题令牌）
+
+* AI 辅助生成网站描述与分类建议，支持 Gemini、OpenAI 兼容 API、Claude
+
+* 保留 EdgeOne Pages Functions：认证、KV 存储、favicon 和上传接口，并提供升级后的 MCP Server
 
 ## 技术栈
 
-- 前端：Vue 3、TypeScript、Vite、Tailwind CSS 4
-- 图标：lucide-vue-next
-- 后端：EdgeOne Pages Functions、EdgeOne KV、Pages Blob
+* 前端：Vue 3、TypeScript、Vite、Tailwind CSS 4
+
+* 图标：lucide-vue-next
+
+* 后端：EdgeOne Pages Functions、EdgeOne KV、Pages Blob
 
 ## 本地开发
 
@@ -45,10 +58,13 @@ pnpm preview     # 本地预览生产构建
 
 构建设置使用：
 
-- 框架预设：Vite
-- 安装命令：`pnpm install`
-- 构建命令：`pnpm build`
-- 输出目录：`dist`
+* 框架预设：Vite
+
+* 安装命令：`pnpm install`
+
+* 构建命令：`pnpm build`
+
+* 输出目录：`dist`
 
 后端需要绑定名为 `CLOUDNAV_KV` 的 KV 命名空间，并设置 `PASSWORD` 环境变量作为管理密码。可选设置 `ALLOWED_ORIGIN` 限制跨域来源。
 
@@ -80,9 +96,11 @@ vite.config.ts          Vite 配置
 
 ## 分类与排序
 
-- 侧栏中拖动分类（或使用上下按钮）即可调整分类顺序，顺序会同步到云端。
-- 登录后，网站卡片右上角提供拖动把手和上下箭头，可调整该分类下卡片的排列顺序。
-- 排序结果持久化到 KV，多设备登录后自动保持一致。
+* 侧栏中拖动分类（或使用上下按钮）即可调整分类顺序，顺序会同步到云端。
+
+* 登录后，网站卡片右上角提供拖动把手和上下箭头，可调整该分类下卡片的排列顺序。
+
+* 排序结果持久化到 KV，多设备登录后自动保持一致。
 
 ## 远程 MCP Server
 
@@ -94,10 +112,13 @@ https://YOUR_DOMAIN/api/mcp
 
 端点支持 MCP Streamable HTTP/SDK，并实现以下工具：
 
-- 读取（公开）：`list_links`、`search_links`、`list_categories`、`get_config`
-- 链接写入（需认证）：`add_link`、`update_link`、`delete_link`、`reorder_links`
-- 分类写入（需认证）：`add_category`、`update_category`、`delete_category`、`reorder_categories`
-- 配置写入（需认证）：`update_config`
+* 读取（公开）：`list_links`、`search_links`、`list_categories`、`get_config`
+
+* 链接写入（需认证）：`add_link`、`update_link`、`delete_link`、`reorder_links`
+
+* 分类写入（需认证）：`add_category`、`update_category`、`delete_category`、`reorder_categories`
+
+* 配置写入（需认证）：`update_config`
 
 并暴露两个结构化资源：`cloudnav://categories` 与 `cloudnav://links`，可由客户端通过 `resources/list` 与 `resources/read` 读取。
 
@@ -109,10 +130,13 @@ https://YOUR_DOMAIN/api/mcp
 
 ## Security notes
 
-- Public configuration responses redact API keys, passwords, tokens, credentials, and custom headers.
-- Generic KV reads are not exposed; administrative reads and writes require authentication.
-- WebDAV and icon import requests require authentication, public HTTPS URLs, timeouts, and size limits.
-- Login attempts are rate-limited per client address.
+* Public configuration responses redact API keys, passwords, tokens, credentials, and custom headers.
+
+* Generic KV reads are not exposed; administrative reads and writes require authentication.
+
+* WebDAV and icon import requests require authentication, public HTTPS URLs, timeouts, and size limits.
+
+* Login attempts are rate-limited per client address.
 
 ## WebDAV backup API
 
