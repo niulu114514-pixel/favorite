@@ -23,6 +23,7 @@ const CONFIG_SECTIONS = [
   'icon',
   'view',
   'ui',
+  'webdav',
 ];
 
 const TOOLS = [
@@ -53,7 +54,7 @@ const TOOLS = [
   },
   {
     name: 'get_config',
-    description: 'Read a configuration section (ai, website, mastodon, weather, search, icon, view, ui).',
+    description: 'Read a configuration section (ai, website, icon, view, ui, webdav, ...).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -183,7 +184,7 @@ const TOOLS = [
   // ---------- Auth write tools: config ----------
   {
     name: 'update_config',
-    description: 'Write a configuration section. Requires authentication.',
+    description: 'Write a configuration section (ai, website, icon, view, ui, webdav, ...). Requires authentication.',
     inputSchema: {
       type: 'object',
       properties: {

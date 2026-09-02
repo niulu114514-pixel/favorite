@@ -11,7 +11,17 @@ const STORAGE_KEYS = {
 
 const MAX_POST_BODY_BYTES = 5 * 1024 * 1024
 
-const CONFIG_SECTIONS = ['ai', 'website', 'mastodon', 'weather', 'search', 'icon', 'view', 'ui']
+const CONFIG_SECTIONS = [
+  'ai',
+  'website',
+  'mastodon',
+  'weather',
+  'search',
+  'icon',
+  'view',
+  'ui',
+  'webdav',
+]
 
 function requestCredential(request) {
   const authorization = request.headers.get('authorization') || ''
@@ -312,15 +322,13 @@ export async function onRequest(context) {
         const entries = Object.entries(body.configs).filter(([section]) =>
           CONFIG_SECTIONS.includes(section)
         )
-        if (!entries.length || entries.length !== Object.keys(body.configs).length) {
+        if (!entries.length) {
           return jsonResponse({ error: 'Invalid configuration sections' }, 400, corsHeaders)
         }
-
-        const current = await mergeAllConfigSections(kv)
-        const merged = { ...current }
-        for (const [section, value] of entries) merged[section] = value
-        await kv.put(STORAGE_KEYS.CONFIG_KEY, JSON.stringify(merged))
-        await Promise.all(CONFIG_SECTIONS.map(section => kv.delete(`config:${section}`)))
+        // 并行写入独立 key，避免读取全量配置再整体覆写，显著降低保存延迟。
+        await Promise.all(
+          entries.map(([section, value]) => kv.put(`config:${section}`, JSON.stringify(value)))
+        )
         return jsonResponse({ success: true }, 200, corsHeaders)
       }
 

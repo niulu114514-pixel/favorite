@@ -24,6 +24,7 @@ export function useCloudNav() {
   const token = ref(localStorage.getItem(AUTH_KEY) || '')
   const loading = ref(true)
   const syncStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const authRequired = ref(false)
   let syncPromise: Promise<void> | null = null
   let syncRevision = 0
   let syncedRevision = 0
@@ -141,6 +142,16 @@ export function useCloudNav() {
     )
   }
 
+  function invalidateToken() {
+    if (!authRequired.value) authRequired.value = true
+    token.value = ''
+    localStorage.removeItem(AUTH_KEY)
+  }
+
+  function resetAuthRequired() {
+    authRequired.value = false
+  }
+
   function persist(): Promise<void> | undefined {
     saveLocal()
     if (!token.value) return undefined
@@ -157,12 +168,15 @@ export function useCloudNav() {
             headers: { 'Content-Type': 'application/json', 'x-auth-password': token.value },
             body: JSON.stringify({ links: links.value, categories: categories.value }),
           })
-          if (!response.ok) throw new Error(`HTTP ${response.status}`)
+          if (!response.ok) {
+            if (response.status === 401) invalidateToken()
+            throw new Error(`HTTP ${response.status}`)
+          }
           syncedRevision = revision
         }
         syncStatus.value = 'saved'
         if (syncIdleTimer) window.clearTimeout(syncIdleTimer)
-        syncIdleTimer = window.setTimeout(() => (syncStatus.value = 'idle'), 1800)
+        syncIdleTimer = window.setTimeout(() => (syncStatus.value = 'idle'), 1200)
       } catch {
         syncStatus.value = 'error'
       } finally {
@@ -314,7 +328,10 @@ export function useCloudNav() {
       headers: { 'Content-Type': 'application/json', 'x-auth-password': token.value },
       body: JSON.stringify({ saveConfig: section, config: value }),
     })
-    if (!response.ok) throw new Error(`配置保存失败（${response.status}）`)
+    if (!response.ok) {
+      if (response.status === 401) invalidateToken()
+      throw new Error(`配置保存失败（${response.status}）`)
+    }
   }
 
   async function saveConfigBatch(configs: Record<string, unknown>) {
@@ -324,7 +341,10 @@ export function useCloudNav() {
       headers: { 'Content-Type': 'application/json', 'x-auth-password': token.value },
       body: JSON.stringify({ saveConfig: 'batch', configs }),
     })
-    if (!response.ok) throw new Error(`Config save failed (${response.status})`)
+    if (!response.ok) {
+      if (response.status === 401) invalidateToken()
+      throw new Error(`Config save failed (${response.status})`)
+    }
   }
 
   const pinnedLinks = computed(() => links.value.filter(item => item.pinned))
@@ -336,6 +356,8 @@ export function useCloudNav() {
     token,
     loading,
     syncStatus,
+    authRequired,
+    resetAuthRequired,
     config,
     init,
     login,

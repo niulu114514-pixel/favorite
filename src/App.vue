@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   Bookmark,
   Check,
   ChevronRight,
+  Eye,
+  EyeOff,
   Folder,
   Grid2X2,
   LayoutList,
@@ -41,6 +43,7 @@ const linkModalOpen = ref(false)
 const authModalOpen = ref(false)
 const categoryModalOpen = ref(false)
 const settingsOpen = ref(false)
+const hideWebsites = ref(localStorage.getItem('cloudnav_hide_websites') === '1')
 const editingLink = ref<Partial<LinkItem>>({})
 const editingCategory = ref<Partial<Category>>({})
 const password = ref('')
@@ -197,6 +200,24 @@ function toggleView() {
   compact.value = !compact.value
   localStorage.setItem('cloudnav_view_mode', compact.value ? 'compact' : 'detailed')
 }
+
+function toggleHideWebsites() {
+  hideWebsites.value = !hideWebsites.value
+  localStorage.setItem('cloudnav_hide_websites', hideWebsites.value ? '1' : '0')
+}
+
+// 登录凭据过期（401）时自动弹出登录框，替代静默的“保存失败”。
+watch(
+  () => nav.authRequired.value,
+  required => {
+    if (required) {
+      authModalOpen.value = true
+      password.value = ''
+      authError.value = '登录已过期，请重新登录'
+      void nextTick(() => nav.resetAuthRequired())
+    }
+  }
+)
 
 function submitSearch() {
   const query = searchQuery.value.trim()
@@ -589,6 +610,14 @@ onBeforeUnmount(() => {
           >
           <button
             class="icon-button"
+            :title="hideWebsites ? '显示网站卡片' : '隐藏网站卡片'"
+            :aria-pressed="hideWebsites"
+            @click="toggleHideWebsites"
+          >
+            <EyeOff v-if="hideWebsites" /><Eye v-else />
+          </button>
+          <button
+            class="icon-button"
             :title="compact ? '详细视图' : '紧凑视图'"
             @click="toggleView"
           >
@@ -620,7 +649,12 @@ onBeforeUnmount(() => {
         </div>
         <template v-else>
           <section
-            v-if="nav.config.showPinned && nav.pinnedLinks.value.length && !searchQuery"
+            v-if="
+              nav.config.showPinned &&
+              nav.pinnedLinks.value.length &&
+              !searchQuery &&
+              !hideWebsites
+            "
             class="category-section pinned-section"
           >
             <h2>
@@ -701,7 +735,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <LinkGrid
-                v-if="categoryLinks(category.id).length"
+                v-if="categoryLinks(category.id).length && !hideWebsites"
                 :links="categoryLinks(category.id)"
                 :compact="compact"
                 :can-manage="Boolean(nav.token.value)"
@@ -711,7 +745,7 @@ onBeforeUnmount(() => {
                 @reorder="orderedIds => nav.reorderLinks(category.id, orderedIds)"
               />
               <button
-                v-else-if="nav.token.value"
+                v-else-if="!hideWebsites && nav.token.value"
                 class="empty-state"
                 @click="openLinkModalForCategory(category.id)"
               >
@@ -1607,24 +1641,81 @@ html.dark .secondary-button {
     padding: 22px 16px 70px;
   }
   .link-grid {
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
   }
   .link-card {
-    min-height: 72px;
-    padding: 12px;
+    min-height: 76px;
+    padding: 13px;
   }
   .link-card img {
     width: 38px;
     height: 38px;
   }
   .link-card p {
-    display: none;
+    /* 移动端展示两行描述，替代原来的隐藏 */
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.35;
   }
   .card-actions {
     display: flex;
   }
   .category-section {
     margin-bottom: 28px;
+  }
+}
+
+/* 手机端固定双列卡片，左右并排展示 */
+@media (max-width: 640px) {
+  .content {
+    padding: 16px 12px 60px;
+  }
+  .category-section h2 {
+    font-size: 16px;
+  }
+  .link-grid,
+  .link-grid.compact,
+  .pinned-section .link-grid,
+  .pinned-section .link-grid.compact,
+  .loading-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .link-card {
+    min-height: 84px;
+    padding: 11px;
+    gap: 9px;
+    border-radius: 12px;
+  }
+  .pinned-section {
+    margin-inline: 0;
+    padding: 18px 14px 20px;
+  }
+  .link-card img {
+    width: 34px;
+    height: 34px;
+    padding: 5px;
+  }
+  .link-card strong {
+    font-size: 13.5px;
+  }
+  .link-card p {
+    font-size: 11px;
+    margin-top: 4px;
+    -webkit-line-clamp: 2;
+  }
+  .compact .link-card {
+    min-height: 62px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 10px;
+  }
+  .compact .link-card p {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
   }
 }
 </style>

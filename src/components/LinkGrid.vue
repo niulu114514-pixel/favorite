@@ -238,7 +238,7 @@ function dropOn(overIdValue: string) {
 /* Responsive: reveal actions and keep cards tappable on small screens. */
 @media (max-width: 850px) {
   .link-grid {
-    --card-min: 244px;
+    --card-min: 216px;
   }
   .card-actions {
     display: flex;
@@ -246,14 +246,63 @@ function dropOn(overIdValue: string) {
     gap: 1px;
   }
   .link-card {
-    min-height: 76px;
+    min-height: 80px;
   }
   .link-card img {
     width: 36px;
     height: 36px;
   }
   .link-card p {
-    display: none;
+    /* 移动端展示两行描述，替代原来的隐藏 */
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.35;
+  }
+}
+
+/* 手机端固定双列卡片，左右并排展示 */
+@media (max-width: 640px) {
+  .link-grid,
+  .link-grid.compact {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .link-card {
+    min-height: 78px;
+    padding: 10px;
+    gap: 9px;
+    border-radius: 12px;
+  }
+  .link-card img {
+    width: 34px;
+    height: 34px;
+    padding: 5px;
+  }
+  .compact .link-card img {
+    width: 30px;
+    height: 30px;
+  }
+  .link-card strong {
+    font-size: 13px;
+  }
+  .link-card p {
+    font-size: 11px;
+    margin-top: 4px;
+    -webkit-line-clamp: 2;
+  }
+  .compact .link-card p {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+  }
+  .card-actions {
+    top: 5px;
+    right: 5px;
+  }
+  .card-actions button {
+    width: 25px;
+    height: 25px;
   }
 }
 </style>
