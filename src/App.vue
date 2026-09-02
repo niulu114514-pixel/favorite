@@ -75,6 +75,27 @@ const childCategories = computed(() => {
   return grouped
 })
 
+// Keep the content order identical to the sidebar order. Categories are stored
+// as a flat array for backwards compatibility, so the view needs to rebuild
+// the parent -> child blocks before rendering them.
+const orderedCategories = computed(() => {
+  const ordered: Category[] = []
+  const seen = new Set<string>()
+  for (const parent of topLevelCategories.value) {
+    ordered.push(parent)
+    seen.add(parent.id)
+    for (const child of categoryChildren(parent.id)) {
+      ordered.push(child)
+      seen.add(child.id)
+    }
+  }
+  // Preserve malformed/legacy records instead of silently hiding them.
+  for (const category of nav.categories.value) {
+    if (!seen.has(category.id)) ordered.push(category)
+  }
+  return ordered
+})
+
 function categoryChildren(categoryId: string) {
   return childCategories.value.get(categoryId) || []
 }
@@ -134,6 +155,14 @@ function categoryLinks(categoryId: string) {
   return linksByCategory.value.get(categoryId) || []
 }
 
+function categoryCount(category: Category) {
+  const direct = categoryLinks(category.id).length
+  if (category.parentId) return direct
+  return direct + categoryChildren(category.id).reduce((total, child) => {
+    return total + categoryLinks(child.id).length
+  }, 0)
+}
+
 function applyTheme() {
   document.documentElement.classList.toggle('dark', dark.value)
   localStorage.setItem('cloudnav_theme_preference', dark.value ? 'dark' : 'light')
@@ -185,16 +214,45 @@ async function dropCategory(id: string) {
   const draggedId = draggedCategoryId.value
   try {
     if (!draggedId || draggedId === id) return
-    const orderedIds = nav.categories.value.map(category => category.id)
-    const from = orderedIds.indexOf(draggedId)
-    const to = orderedIds.indexOf(id)
-    if (from < 0 || to < 0) return
-    orderedIds.splice(from, 1)
-    orderedIds.splice(to, 0, draggedId)
-    await nav.reorderCategories(orderedIds)
+    const orderedIds = reorderCategoryLevel(draggedId, id)
+    if (orderedIds) await nav.reorderCategories(orderedIds)
   } finally {
     endCategoryDrag()
   }
+}
+
+function reorderCategoryLevel(draggedId: string, targetId: string) {
+  const dragged = categoryMap.value.get(draggedId)
+  const target = categoryMap.value.get(targetId)
+  if (!dragged || !target) return null
+
+  const parentId = dragged.parentId || ''
+  if ((target.parentId || '') !== parentId) return null
+
+  const siblings = parentId
+    ? [...categoryChildren(parentId)]
+    : [...topLevelCategories.value]
+  const from = siblings.findIndex(category => category.id === draggedId)
+  const to = siblings.findIndex(category => category.id === targetId)
+  if (from < 0 || to < 0) return null
+  const [moved] = siblings.splice(from, 1)
+  siblings.splice(to, 0, moved)
+
+  const ordered: string[] = []
+  const seen = new Set<string>()
+  for (const top of parentId ? topLevelCategories.value : siblings) {
+    ordered.push(top.id)
+    seen.add(top.id)
+    const children = top.id === parentId ? siblings : categoryChildren(top.id)
+    for (const child of children) {
+      ordered.push(child.id)
+      seen.add(child.id)
+    }
+  }
+  for (const category of nav.categories.value) {
+    if (!seen.has(category.id)) ordered.push(category.id)
+  }
+  return ordered
 }
 
 function endCategoryDrag() {
@@ -205,13 +263,17 @@ function endCategoryDrag() {
 async function moveCategoryByKeyboard(event: KeyboardEvent, id: string) {
   if (!event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return
   event.preventDefault()
-  const orderedIds = nav.categories.value.map(category => category.id)
-  const index = orderedIds.indexOf(id)
+  const category = categoryMap.value.get(id)
+  if (!category) return
+  const siblings = category.parentId
+    ? categoryChildren(category.parentId)
+    : topLevelCategories.value
+  const index = siblings.findIndex(item => item.id === id)
   const nextIndex = event.key === 'ArrowUp' ? index - 1 : index + 1
-  if (index < 0 || nextIndex < 0 || nextIndex >= orderedIds.length) return
-  const swapped = orderedIds[index]
-  orderedIds[index] = orderedIds[nextIndex]
-  orderedIds[nextIndex] = swapped
+  const target = siblings[nextIndex]
+  if (!target) return
+  const orderedIds = reorderCategoryLevel(id, target.id)
+  if (!orderedIds) return
   await nav.reorderCategories(orderedIds)
   activeCategoryId.value = id
 }
@@ -580,9 +642,12 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <template v-for="category in nav.categories.value" :key="category.id">
+          <template v-for="category in orderedCategories" :key="category.id">
             <section
-              v-if="!searchQuery.trim() || categoryLinks(category.id).length"
+              v-if="
+                (!category.parentId || isCategoryExpanded(category.parentId) || searchQuery.trim()) &&
+                (!searchQuery.trim() || categoryLinks(category.id).length)
+              "
               :id="`category-${category.id}`"
               class="category-section"
               :class="{
@@ -593,7 +658,7 @@ onBeforeUnmount(() => {
               <div class="section-title">
                 <h2>
                   <Folder :size="20" /> {{ category.name }}
-                  <span>{{ categoryLinks(category.id).length }}</span>
+                  <span>{{ categoryCount(category) }}</span>
                 </h2>
                 <div v-if="nav.token.value" class="section-actions">
                   <button
