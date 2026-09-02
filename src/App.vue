@@ -18,6 +18,7 @@ import {
   Search,
   Settings,
   Star,
+  Sparkles,
   Sun,
   Trash2,
   X,
@@ -45,6 +46,7 @@ const authError = ref('')
 const aiBusy = ref(false)
 const aiError = ref('')
 const searchInput = ref<HTMLInputElement>()
+const activeCategoryId = ref('')
 
 const visibleLinks = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase()
@@ -84,7 +86,13 @@ function submitSearch() {
 }
 
 function jumpTo(id: string) {
-  document.getElementById(`category-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const target = document.getElementById(`category-${id}`)
+  if (!target) return
+
+  activeCategoryId.value = id
+  const headerOffset = 84
+  const top = target.getBoundingClientRect().top + window.scrollY - headerOffset
+  window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   sidebarOpen.value = false
 }
 
@@ -231,7 +239,10 @@ onMounted(async () => {
         <button
           v-for="category in nav.categories.value"
           :key="category.id"
-          @click="jumpTo(category.id)"
+          type="button"
+          :class="{ active: activeCategoryId === category.id }"
+          :aria-current="activeCategoryId === category.id ? 'location' : undefined"
+          @click.prevent="jumpTo(category.id)"
         >
           <Folder :size="17" /><span>{{ category.name }}</span
           ><ChevronRight :size="15" />
@@ -343,6 +354,7 @@ onMounted(async () => {
             :id="`category-${category.id}`"
             :key="category.id"
             class="category-section"
+            :class="{ 'is-active': activeCategoryId === category.id }"
           >
             <div class="section-title">
               <h2>
@@ -631,6 +643,12 @@ onMounted(async () => {
   box-shadow: 0 5px 15px rgba(63, 84, 133, 0.09);
   transform: translateX(2px);
 }
+.category-nav button.active {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(123, 156, 255, 0.42);
+  color: #315ed5;
+  box-shadow: 0 6px 18px rgba(63, 84, 133, 0.12);
+}
 .category-nav button span {
   flex: 1;
 }
@@ -763,6 +781,12 @@ onMounted(async () => {
 .category-section {
   scroll-margin-top: 84px;
   margin-bottom: 35px;
+  border-radius: 16px;
+  transition: background-color 0.25s ease, box-shadow 0.25s ease;
+}
+.category-section.is-active {
+  background: rgba(123, 156, 255, 0.07);
+  box-shadow: 0 0 0 1px rgba(123, 156, 255, 0.18);
 }
 .category-section h2 {
   display: flex;
@@ -1025,78 +1049,88 @@ onMounted(async () => {
     background-position: -200% 0;
   }
 }
-:global(html.dark) .app-shell {
+html.dark .app-shell {
   background: #171c23;
   color: #d5dbe3;
   background-image:
     radial-gradient(circle at 10% 2%, rgba(71, 102, 190, 0.24), transparent 30%),
     radial-gradient(circle at 88% 18%, rgba(135, 78, 174, 0.18), transparent 26%);
 }
-:global(html.dark) .sidebar {
+html.dark .sidebar {
   background: linear-gradient(155deg, rgba(33, 42, 55, 0.76), rgba(24, 31, 41, 0.64));
   border-color: rgba(172, 194, 230, 0.16);
   box-shadow:
     12px 0 42px rgba(0, 0, 0, 0.25),
     inset -1px 0 rgba(255, 255, 255, 0.06);
 }
-:global(html.dark) .sidebar::before {
+html.dark .sidebar::before {
   background: rgba(71, 105, 204, 0.2);
 }
-:global(html.dark) .sidebar::after {
+html.dark .sidebar::after {
   background: rgba(141, 85, 185, 0.15);
 }
-:global(html.dark) .header,
-:global(html.dark) .modal,
-:global(html.dark) .link-card,
-:global(html.dark) .icon-button,
-:global(html.dark) .card-actions {
+html.dark .header,
+html.dark .modal,
+html.dark .link-card,
+html.dark .icon-button,
+html.dark .card-actions {
   background: #222933;
   border-color: #343d49;
 }
-:global(html.dark) .header {
+html.dark .header {
   background: rgba(34, 41, 51, 0.76);
   border-color: rgba(172, 194, 230, 0.14);
 }
-:global(html.dark) .search-box {
+html.dark .search-box {
   background: #181e26;
 }
-:global(html.dark) .category-nav button,
-:global(html.dark) .sidebar-footer button,
-:global(html.dark) .link-card p {
+html.dark .category-nav button,
+html.dark .sidebar-footer button,
+html.dark .link-card p {
   color: #9ba7b7;
 }
-:global(html.dark) .category-nav button,
-:global(html.dark) .sidebar-footer button {
+html.dark .category-nav button,
+html.dark .sidebar-footer button {
   background: rgba(255, 255, 255, 0.035);
   border-color: transparent;
 }
-:global(html.dark) .category-nav button:hover,
-:global(html.dark) .sidebar-footer button:hover {
+html.dark .category-nav button:hover,
+html.dark .sidebar-footer button:hover {
   background: rgba(115, 145, 224, 0.18);
   border-color: rgba(145, 171, 246, 0.25);
   color: #c9d8ff;
 }
-:global(html.dark) .brand,
-:global(html.dark) .sidebar-footer {
+html.dark .category-nav button.active {
+  background: rgba(115, 145, 224, 0.24);
+  border-color: rgba(145, 171, 246, 0.38);
+  color: #d8e3ff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+}
+html.dark .brand,
+html.dark .sidebar-footer {
   border-color: rgba(172, 194, 230, 0.16);
   background: rgba(255, 255, 255, 0.035);
 }
-:global(html.dark) .pinned-section {
+html.dark .pinned-section {
   background: linear-gradient(135deg, #202a3f, #29243a);
   border-color: #35415e;
 }
-:global(html.dark) .modal input,
-:global(html.dark) .modal textarea,
-:global(html.dark) .modal select {
+html.dark .category-section.is-active {
+  background: rgba(115, 145, 224, 0.1);
+  box-shadow: 0 0 0 1px rgba(145, 171, 246, 0.22);
+}
+html.dark .modal input,
+html.dark .modal textarea,
+html.dark .modal select {
   background: #171d25;
   border-color: #414a57;
   color: #dbe1e8;
 }
-:global(html.dark) .brand,
-:global(html.dark) .sidebar-footer {
+html.dark .brand,
+html.dark .sidebar-footer {
   border-color: #343d49;
 }
-:global(html.dark) .secondary-button {
+html.dark .secondary-button {
   background: #343d49;
   color: #d1d8e2;
 }
