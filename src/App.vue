@@ -320,7 +320,7 @@ async function submitLink() {
 
 async function generateWithAI() {
   if (!editingLink.value.title?.trim() || !editingLink.value.url?.trim()) {
-    aiError.value = '璇峰厛濉啓鍚嶇О鍜岀綉鍧€'
+    aiError.value = '请先填写名称和网址'
     return
   }
   aiBusy.value = true
@@ -338,18 +338,18 @@ async function generateWithAI() {
     if (description) editingLink.value.description = description
     if (categoryId) editingLink.value.categoryId = categoryId
   } catch (error) {
-    aiError.value = error instanceof Error ? error.message : 'AI 璇锋眰澶辫触'
+    aiError.value = error instanceof Error ? error.message : 'AI 请求失败'
   } finally {
     aiBusy.value = false
   }
 }
 
 async function deleteLink(link: LinkItem) {
-  if (confirm(`纭畾鍒犻櫎鈥?{link.title}鈥濆悧锛焋)) await nav.removeLink(link.id)
+  if (confirm(`确定删除“${link.title}”吗？`)) await nav.removeLink(link.id)
 }
 
 async function deleteCategory(category: Category) {
-  if (window.confirm(`鍒犻櫎鈥?{category.name}鈥濓紵璇ュ垎绫荤殑缃戠珯灏嗙Щ鍒板父鐢ㄦ帹鑽愩€俙)) {
+  if (window.confirm(`删除“${category.name}”？该分类的网站将移到常用推荐。`)) {
     await nav.removeCategory(category.id)
   }
 }
@@ -360,9 +360,9 @@ async function submitLogin() {
     if (await nav.login(password.value)) {
       authModalOpen.value = false
       password.value = ''
-    } else authError.value = '瀵嗙爜涓嶆纭?
+    } else authError.value = '密码不正确'
   } catch {
-    authError.value = '鏆傛椂鏃犳硶鐧诲綍锛岃绋嶅悗閲嶈瘯'
+    authError.value = '暂时无法登录，请稍后重试'
   }
 }
 
@@ -474,7 +474,7 @@ onBeforeUnmount(() => {
             :aria-expanded="
               categoryChildren(category.id).length ? isCategoryExpanded(category.id) : undefined
             "
-            :title="'鎷栧姩璋冩暣鍒嗙被椤哄簭锛圓lt+鈫?鈫擄級'"
+            :title="'拖动调整分类顺序（Alt+↑/↓）'"
             :class="{
               active: activeCategoryId === category.id,
               dragging: draggedCategoryId === category.id,
@@ -501,7 +501,7 @@ onBeforeUnmount(() => {
               class="category-toggle"
               role="button"
               tabindex="0"
-              :aria-label="isCategoryExpanded(category.id) ? '鏀惰捣浜岀骇鍒嗙被' : '灞曞紑浜岀骇鍒嗙被'"
+              :aria-label="isCategoryExpanded(category.id) ? '收起二级分类' : '展开二级分类'"
               @click.stop="toggleCategoryExpanded($event, category.id)"
               @keydown.enter.stop="toggleCategoryExpanded($event, category.id)"
               @keydown.space.prevent.stop="toggleCategoryExpanded($event, category.id)"
@@ -510,11 +510,11 @@ onBeforeUnmount(() => {
                 :class="{ expanded: isCategoryExpanded(category.id) }" /></span
             ><ChevronRight v-else :size="15" />
             </button>
-            <div v-if="categorySiblings(category).length > 1" class="category-reorder" aria-label="绉诲姩鍒嗙被">
-              <button type="button" aria-label="鍒嗙被涓婄Щ" @click="moveCategoryByStep(category.id, -1)">
+            <div v-if="categorySiblings(category).length > 1" class="category-reorder" aria-label="移动分类">
+              <button type="button" aria-label="分类上移" @click="moveCategoryByStep(category.id, -1)">
                 <ChevronUp :size="13" />
               </button>
-              <button type="button" aria-label="鍒嗙被涓嬬Щ" @click="moveCategoryByStep(category.id, 1)">
+              <button type="button" aria-label="分类下移" @click="moveCategoryByStep(category.id, 1)">
                 <ChevronDown :size="13" />
               </button>
             </div>
@@ -525,7 +525,7 @@ onBeforeUnmount(() => {
               type="button"
               class="subcategory"
               :aria-current="activeCategoryId === child.id ? 'location' : undefined"
-              :title="'鎷栧姩璋冩暣鍒嗙被椤哄簭锛圓lt+鈫?鈫擄級'"
+              :title="'拖动调整分类顺序（Alt+↑/↓）'"
               :class="{
                 active: activeCategoryId === child.id,
                 dragging: draggedCategoryId === child.id,
@@ -549,11 +549,11 @@ onBeforeUnmount(() => {
               <Folder :size="16" /><span>{{ child.name }}</span
               ><ChevronRight :size="15" />
               </button>
-              <div v-if="categorySiblings(child).length > 1" class="category-reorder" aria-label="绉诲姩鍒嗙被">
-                <button type="button" aria-label="鍒嗙被涓婄Щ" @click="moveCategoryByStep(child.id, -1)">
+              <div v-if="categorySiblings(child).length > 1" class="category-reorder" aria-label="移动分类">
+                <button type="button" aria-label="分类上移" @click="moveCategoryByStep(child.id, -1)">
                   <ChevronUp :size="13" />
                 </button>
-                <button type="button" aria-label="鍒嗙被涓嬬Щ" @click="moveCategoryByStep(child.id, 1)">
+                <button type="button" aria-label="分类下移" @click="moveCategoryByStep(child.id, 1)">
                   <ChevronDown :size="13" />
                 </button>
               </div>
@@ -563,16 +563,16 @@ onBeforeUnmount(() => {
       </nav>
       <div class="sidebar-footer">
         <button v-if="nav.token.value" @click="openCategoryModal()">
-          <Plus :size="16" /> 鏂板缓鍒嗙被
+          <Plus :size="16" /> 新建分类
         </button>
-        <button v-if="nav.token.value" @click="nav.logout()"><LogOut :size="16" /> 閫€鍑虹鐞?/button>
-        <button v-else @click="authModalOpen = true"><LogIn :size="16" /> 绠＄悊鐧诲綍</button>
+        <button v-if="nav.token.value" @click="nav.logout()"><LogOut :size="16" /> 退出管理</button>
+        <button v-else @click="authModalOpen = true"><LogIn :size="16" /> 管理登录</button>
       </div>
     </aside>
 
     <main class="main-area">
       <header class="header">
-        <button class="icon-button mobile-only" aria-label="鎵撳紑鑿滃崟" @click="sidebarOpen = true">
+        <button class="icon-button mobile-only" aria-label="打开菜单" @click="sidebarOpen = true">
           <Menu />
         </button>
         <form class="search-box" @submit.prevent="submitSearch">
@@ -580,7 +580,7 @@ onBeforeUnmount(() => {
           <input
             ref="searchInput"
             v-model="searchQuery"
-            :placeholder="externalSearch ? '鎼滅储浜掕仈缃戔€? : '鎼滅储鏀惰棌鈥︼紙鎸?/ 鑱氱劍锛?"
+            :placeholder="externalSearch ? '搜索互联网…' : '搜索收藏…（按 / 聚焦）'"
           />
           <button v-if="searchQuery" type="button" class="clear-search" @click="searchQuery = ''">
             <X :size="16" />
@@ -588,7 +588,7 @@ onBeforeUnmount(() => {
         </form>
         <label class="search-switch"
           ><input v-model="externalSearch" type="checkbox" /><span>{{
-            externalSearch ? 'Google' : '绔欏唴'
+            externalSearch ? 'Google' : '站内'
           }}</span></label
         >
         <div class="header-actions">
@@ -598,34 +598,34 @@ onBeforeUnmount(() => {
             :class="nav.syncStatus.value"
             >{{
               nav.syncStatus.value === 'saving'
-                ? '淇濆瓨涓?
+                ? '保存中'
                 : nav.syncStatus.value === 'saved'
-                  ? '宸蹭繚瀛?
-                  : '淇濆瓨澶辫触'
+                  ? '已保存'
+                  : '保存失败'
             }}</span
           >
           <button
             class="icon-button"
-            :title="compact ? '璇︾粏瑙嗗浘' : '绱у噾瑙嗗浘'"
+            :title="compact ? '详细视图' : '紧凑视图'"
             @click="toggleView"
           >
             <LayoutList v-if="compact" /><Grid2X2 v-else />
           </button>
-          <button class="icon-button" title="鍒囨崲涓婚" @click="toggleTheme">
+          <button class="icon-button" title="切换主题" @click="toggleTheme">
             <Sun v-if="dark" /><Moon v-else />
           </button>
           <button
             v-if="nav.token.value"
             class="icon-button"
-            title="璁剧疆"
+            title="设置"
             @click="settingsOpen = true"
           >
             <Settings />
           </button>
           <button v-if="nav.token.value" class="primary-button" @click="openLinkModal()">
-            <Plus :size="18" /><span>娣诲姞缃戠珯</span>
+            <Plus :size="18" /><span>添加网站</span>
           </button>
-          <button v-else class="icon-button" title="绠＄悊鐧诲綍" @click="authModalOpen = true">
+          <button v-else class="icon-button" title="管理登录" @click="authModalOpen = true">
             <Settings />
           </button>
         </div>
@@ -641,7 +641,7 @@ onBeforeUnmount(() => {
             class="category-section pinned-section"
           >
             <h2>
-              <Star :size="20" fill="currentColor" /> 缃《缃戠珯
+              <Star :size="20" fill="currentColor" /> 置顶网站
               <span>{{ nav.pinnedLinks.value.length }}</span>
             </h2>
             <div class="link-grid" :class="{ compact }">
@@ -700,7 +700,7 @@ onBeforeUnmount(() => {
                 <div v-if="nav.token.value" class="section-actions">
                   <button
                     class="icon-button small"
-                    title="缂栬緫鍒嗙被"
+                    title="编辑分类"
                     @click="openCategoryModal(category)"
                   >
                     <Pencil />
@@ -708,7 +708,7 @@ onBeforeUnmount(() => {
                   <button
                     v-if="category.id !== 'common'"
                     class="icon-button small danger"
-                    title="鍒犻櫎鍒嗙被"
+                    title="删除分类"
                     @click="deleteCategory(category)"
                   >
                     <Trash2 />
@@ -748,13 +748,13 @@ onBeforeUnmount(() => {
                   </a>
                   <div v-if="nav.token.value" class="card-actions">
                     <button
-                      :title="link.pinned ? '鍙栨秷缃《' : '缃《'"
+                      :title="link.pinned ? '取消置顶' : '置顶'"
                       @click="nav.togglePin(link.id)"
                     >
                       <Pin :size="15" :fill="link.pinned ? 'currentColor' : 'none'" />
                     </button>
-                    <button title="缂栬緫" @click="openLinkModal(link)"><Pencil :size="15" /></button>
-                    <button title="鍒犻櫎" @click="deleteLink(link)"><Trash2 :size="15" /></button>
+                    <button title="编辑" @click="openLinkModal(link)"><Pencil :size="15" /></button>
+                    <button title="删除" @click="deleteLink(link)"><Trash2 :size="15" /></button>
                   </div>
                 </article>
               </div>
@@ -763,14 +763,14 @@ onBeforeUnmount(() => {
                 class="empty-state"
                 @click="openLinkModalForCategory(category.id)"
               >
-                <Plus /> 鍚戞鍒嗙被娣诲姞缃戠珯
+                <Plus /> 向此分类添加网站
               </button>
             </section>
           </template>
           <div v-if="searchQuery && !visibleLinks.length" class="no-results">
             <Search />
-            <h2>娌℃湁鎵惧埌鐩稿叧缃戠珯</h2>
-            <p>璇曡瘯鏇寸煭鐨勫叧閿瘝锛屾垨鍒囨崲鍒颁簰鑱旂綉鎼滅储銆?/p>
+            <h2>没有找到相关网站</h2>
+            <p>试试更短的关键词，或切换到互联网搜索。</p>
           </div>
         </template>
       </div>
@@ -780,43 +780,43 @@ onBeforeUnmount(() => {
       <form class="modal" @submit.prevent="submitLink">
         <div class="modal-title">
           <div>
-            <h2>{{ editingLink.id ? '缂栬緫缃戠珯' : '娣诲姞缃戠珯' }}</h2>
-            <p>淇濆瓨鍚庡皢鍚屾鍒版湰鍦板拰浜戠銆?/p>
+            <h2>{{ editingLink.id ? '编辑网站' : '添加网站' }}</h2>
+            <p>保存后将同步到本地和云端。</p>
           </div>
           <button type="button" class="icon-button" @click="linkModalOpen = false"><X /></button>
         </div>
         <label
-          >鍚嶇О<input
+          >名称<input
             v-model="editingLink.title"
             required
             maxlength="100"
-            placeholder="渚嬪 GitHub"
+            placeholder="例如 GitHub"
         /></label>
         <label
-          >缃戝潃<input
+          >网址<input
             v-model="editingLink.url"
             required
             maxlength="2048"
             placeholder="https://example.com"
         /></label>
         <label
-          >鎻忚堪<textarea
+          >描述<textarea
             v-model="editingLink.description"
             rows="3"
-            placeholder="涓€鍙ヨ瘽浠嬬粛杩欎釜缃戠珯"
+            placeholder="一句话介绍这个网站"
           />
         </label>
         <div class="ai-link-actions">
           <button type="button" class="secondary-button" :disabled="aiBusy" @click="generateWithAI">
-            <Sparkles :size="15" />{{ aiBusy ? 'AI 澶勭悊涓€? : 'AI 鐢熸垚鎻忚堪骞跺垎绫? }}
+            <Sparkles :size="15" />{{ aiBusy ? 'AI 处理中…' : 'AI 生成描述并分类' }}
           </button>
           <span v-if="aiError" class="form-error">{{ aiError }}</span>
         </div>
         <label
-          >鍥炬爣缃戝潃<input v-model="editingLink.icon" placeholder="鐣欑┖灏嗚嚜鍔ㄨ幏鍙?favicon"
+          >图标网址<input v-model="editingLink.icon" placeholder="留空将自动获取 favicon"
         /></label>
         <label
-          >鍒嗙被<select v-model="editingLink.categoryId">
+          >分类<select v-model="editingLink.categoryId">
             <option
               v-for="category in nav.categories.value"
               :key="category.id"
@@ -827,8 +827,8 @@ onBeforeUnmount(() => {
           </select></label
         >
         <div class="modal-actions">
-          <button type="button" class="secondary-button" @click="linkModalOpen = false">鍙栨秷</button
-          ><button class="primary-button"><Check :size="17" />淇濆瓨</button>
+          <button type="button" class="secondary-button" @click="linkModalOpen = false">取消</button
+          ><button class="primary-button"><Check :size="17" />保存</button>
         </div>
       </form>
     </div>
@@ -837,13 +837,13 @@ onBeforeUnmount(() => {
       <form class="modal small-modal" @submit.prevent="submitLogin">
         <div class="modal-title">
           <div>
-            <h2>绠＄悊鐧诲綍</h2>
-            <p>鐧诲綍鍚庡彲缂栬緫鍒嗙被鍜岀綉绔欍€?/p>
+            <h2>管理登录</h2>
+            <p>登录后可编辑分类和网站。</p>
           </div>
           <button type="button" class="icon-button" @click="authModalOpen = false"><X /></button>
         </div>
         <label
-          >绠＄悊瀵嗙爜<input
+          >管理密码<input
             v-model="password"
             type="password"
             required
@@ -851,7 +851,7 @@ onBeforeUnmount(() => {
             autocomplete="current-password"
         /></label>
         <p v-if="authError" class="form-error">{{ authError }}</p>
-        <button class="primary-button full-button"><LogIn :size="17" />鐧诲綍</button>
+        <button class="primary-button full-button"><LogIn :size="17" />登录</button>
       </form>
     </div>
 
@@ -859,38 +859,38 @@ onBeforeUnmount(() => {
       <form class="modal small-modal" @submit.prevent="submitCategory">
         <div class="modal-title">
           <div>
-            <h2>{{ editingCategory.id ? '缂栬緫鍒嗙被' : '鏂板缓鍒嗙被' }}</h2>
-            <p>鍒嗙被浼氭樉绀哄湪渚ф爮鍜岄椤点€?/p>
+            <h2>{{ editingCategory.id ? '编辑分类' : '新建分类' }}</h2>
+            <p>分类会显示在侧栏和首页。</p>
           </div>
           <button type="button" class="icon-button" @click="categoryModalOpen = false">
             <X />
           </button>
         </div>
         <label
-          >鍒嗙被鍚嶇О<input
+          >分类名称<input
             v-model="editingCategory.name"
             required
             maxlength="40"
-            placeholder="渚嬪锛氬紑鍙戝伐鍏?
+            placeholder="例如：开发工具"
         /></label>
         <label>
-          涓婄骇鍒嗙被
+          上级分类
           <select v-model="editingCategory.parentId">
-            <option value="">涓€绾у垎绫伙紙椤跺眰锛?/option>
+            <option value="">一级分类（顶层）</option>
             <option
               v-for="parent in topLevelCategories.filter(item => item.id !== editingCategory.id)"
               :key="parent.id"
               :value="parent.id"
             >
-              浜岀骇鍒嗙被 路 {{ parent.name }}
+              二级分类 · {{ parent.name }}
             </option>
           </select>
         </label>
-        <p class="modal-help">鏀寔涓ょ骇鍒嗙被锛涗簩绾у垎绫讳細缂╄繘鏄剧ず鍦ㄤ晶鏍忎腑銆?/p>
+        <p class="modal-help">支持两级分类；二级分类会缩进显示在侧栏中。</p>
         <div class="modal-actions">
           <button type="button" class="secondary-button" @click="categoryModalOpen = false">
-            鍙栨秷</button
-          ><button class="primary-button"><Check :size="17" />淇濆瓨</button>
+            取消</button
+          ><button class="primary-button"><Check :size="17" />保存</button>
         </div>
       </form>
     </div>
@@ -1695,4 +1695,3 @@ html.dark .secondary-button {
   }
 }
 </style>
-
