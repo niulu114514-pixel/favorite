@@ -114,19 +114,6 @@ html.dark body {
   50% { opacity: 0.5; }
 }
 
-.link-card {
-  animation: fadeIn 0.3s ease-out forwards;
-  opacity: 0;
-}
-
-.link-card:nth-child(1) { animation-delay: 0ms; }
-.link-card:nth-child(2) { animation-delay: 30ms; }
-.link-card:nth-child(3) { animation-delay: 60ms; }
-.link-card:nth-child(4) { animation-delay: 90ms; }
-.link-card:nth-child(5) { animation-delay: 120ms; }
-.link-card:nth-child(6) { animation-delay: 150ms; }
-.link-card:nth-child(n+7) { animation-delay: 180ms; }
-
 /* Custom scrollbar for sidebar */
 .scrollbar-hide::-webkit-scrollbar {
     display: none;

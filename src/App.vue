@@ -56,12 +56,23 @@ const visibleLinks = computed(() => {
   )
 })
 
-function categoryLinks(categoryId: string) {
-  return visibleLinks.value
-    .filter(link => link.categoryId === categoryId)
-    .sort(
+const linksByCategory = computed(() => {
+  const grouped = new Map<string, LinkItem[]>()
+  for (const link of visibleLinks.value) {
+    const items = grouped.get(link.categoryId)
+    if (items) items.push(link)
+    else grouped.set(link.categoryId, [link])
+  }
+  for (const items of grouped.values()) {
+    items.sort(
       (a, b) => (a.weight ?? Infinity) - (b.weight ?? Infinity) || (a.order ?? 0) - (b.order ?? 0)
     )
+  }
+  return grouped
+})
+
+function categoryLinks(categoryId: string) {
+  return linksByCategory.value.get(categoryId) || []
 }
 
 function applyTheme() {
@@ -340,7 +351,15 @@ onMounted(async () => {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <img :src="favicon(link)" alt="" @error="fallbackIcon($event, link)" />
+                <img
+                  :src="favicon(link)"
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  width="39"
+                  height="39"
+                  @error="fallbackIcon($event, link)"
+                />
                 <div>
                   <strong>{{ link.title }}</strong>
                   <p v-if="!compact">{{ link.description || link.url }}</p>
@@ -386,7 +405,15 @@ onMounted(async () => {
                 class="link-card-wrap"
               >
                 <a class="link-card" :href="link.url" target="_blank" rel="noopener noreferrer">
-                  <img :src="favicon(link)" alt="" @error="fallbackIcon($event, link)" />
+                  <img
+                    :src="favicon(link)"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    width="39"
+                    height="39"
+                    @error="fallbackIcon($event, link)"
+                  />
                   <div>
                     <strong>{{ link.title }}</strong>
                     <p v-if="!compact">{{ link.description || link.url }}</p>
@@ -561,13 +588,15 @@ onMounted(async () => {
   box-shadow:
     12px 0 38px rgba(48, 65, 104, 0.1),
     inset -1px 0 rgba(255, 255, 255, 0.38);
-  backdrop-filter: blur(26px) saturate(175%);
-  -webkit-backdrop-filter: blur(26px) saturate(175%);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
   display: flex;
   flex-direction: column;
   z-index: 40;
   isolation: isolate;
   overflow: hidden;
+  contain: layout paint;
+  will-change: transform;
 }
 .sidebar::before,
 .sidebar::after {
@@ -633,7 +662,8 @@ onMounted(async () => {
   border-radius: 9px;
   text-align: left;
   cursor: pointer;
-  transition: 0.18s ease;
+  transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease,
+    color 0.18s ease, box-shadow 0.18s ease;
 }
 .category-nav button:hover,
 .sidebar-footer button:hover {
@@ -667,7 +697,8 @@ onMounted(async () => {
   top: 0;
   z-index: 30;
   background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid #e7eaf0;
   display: flex;
   align-items: center;
@@ -845,7 +876,7 @@ onMounted(async () => {
   border-radius: 13px;
   text-decoration: none;
   color: inherit;
-  transition: 0.18s ease;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
   box-shadow: 0 2px 5px rgba(28, 39, 60, 0.025);
 }
 .compact .link-card {
