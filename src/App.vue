@@ -50,6 +50,7 @@ const searchInput = ref<HTMLInputElement>()
 const activeCategoryId = ref('')
 const draggedCategoryId = ref<string | null>(null)
 const dragOverCategoryId = ref<string | null>(null)
+const faviconCache = new Map<string, string>()
 
 const visibleLinks = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase()
@@ -231,9 +232,17 @@ async function submitCategory() {
 }
 
 function favicon(link: LinkItem) {
-  if (link.icon) return link.icon
+  const cacheKey = `${link.id}:${link.icon || ''}:${link.url}`
+  const cached = faviconCache.get(cacheKey)
+  if (cached) return cached
+  if (link.icon) {
+    faviconCache.set(cacheKey, link.icon)
+    return link.icon
+  }
   try {
-    return `/api/favicon?domain=${encodeURIComponent(new URL(link.url).hostname)}`
+    const source = `/api/favicon?domain=${encodeURIComponent(new URL(link.url).hostname)}`
+    faviconCache.set(cacheKey, source)
+    return source
   } catch {
     return '/favicon.ico'
   }
@@ -405,6 +414,15 @@ onMounted(async () => {
               <a
                 v-for="link in nav.pinnedLinks.value"
                 :key="link.id"
+                v-memo="[
+                  link.id,
+                  link.title,
+                  link.description,
+                  link.url,
+                  link.icon,
+                  link.pinned,
+                  compact,
+                ]"
                 class="link-card"
                 :href="link.url"
                 target="_blank"
@@ -461,6 +479,16 @@ onMounted(async () => {
               <article
                 v-for="link in categoryLinks(category.id)"
                 :key="link.id"
+                v-memo="[
+                  link.id,
+                  link.title,
+                  link.description,
+                  link.url,
+                  link.icon,
+                  link.pinned,
+                  compact,
+                  nav.token.value,
+                ]"
                 class="link-card-wrap"
               >
                 <a class="link-card" :href="link.url" target="_blank" rel="noopener noreferrer">
@@ -707,6 +735,7 @@ onMounted(async () => {
   padding: 16px 10px;
   overflow: auto;
   flex: 1;
+  overscroll-behavior: contain;
 }
 .category-nav button,
 .sidebar-footer button {
@@ -774,9 +803,7 @@ onMounted(async () => {
   position: sticky;
   top: 0;
   z-index: 30;
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid #e7eaf0;
   display: flex;
   align-items: center;
@@ -1192,7 +1219,7 @@ html.dark .card-actions {
   border-color: #343d49;
 }
 html.dark .header {
-  background: rgba(34, 41, 51, 0.76);
+  background: rgba(34, 41, 51, 0.96);
   border-color: rgba(172, 194, 230, 0.14);
 }
 html.dark .search-box {
