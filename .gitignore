@@ -576,4 +576,7 @@ $RECYCLE.BIN/
 # KV 备份数据（包含敏感信息）
 kv/
 
+# pnpm 依赖缓存（本机安装产物，不应提交）
+.pnpm-store/
+
 .idea/
