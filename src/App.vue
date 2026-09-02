@@ -1085,7 +1085,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGlobalKeydown)
 }
 .link-card-wrap {
   position: relative;
-  contain: layout paint;
+  /* Keep layout containment without clipping the hover transform. */
+  contain: layout;
 }
 .link-card {
   min-height: 82px;
