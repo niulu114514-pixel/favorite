@@ -953,4 +953,127 @@ html.dark .settings-footer {
     padding: 13px 18px;
   }
 }
+
+/* Mobile layout: keep each setting easy to read and tap. */
+@media (max-width: 680px) {
+  .settings-backdrop {
+    padding: 8px;
+    place-items: stretch;
+  }
+  .settings-modal {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+    border-radius: 18px;
+  }
+  .settings-header {
+    padding: 16px;
+  }
+  .settings-header h2 {
+    font-size: 18px;
+  }
+  .settings-header p {
+    max-width: 28em;
+    line-height: 1.45;
+  }
+  .settings-body {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+  .settings-nav {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+    padding: 10px;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid #e0e6ef;
+    scrollbar-width: none;
+  }
+  .settings-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .settings-nav button {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 108px;
+    min-height: 44px;
+    justify-content: flex-start;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+  .settings-nav button span {
+    display: block;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+  .settings-content {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    padding: 12px;
+    overflow-y: auto;
+  }
+  .settings-section.settings-card {
+    margin-bottom: 12px;
+    padding: 16px;
+    border-radius: 15px;
+  }
+  .settings-section.settings-card h3 {
+    font-size: 15px;
+  }
+  .settings-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .settings-section input:not([type='checkbox']),
+  .settings-section select {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .settings-inline {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .settings-inline .settings-secondary {
+    width: 100%;
+    min-height: 44px;
+  }
+  .mcp-command {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .mcp-command code {
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .mcp-command button {
+    align-self: flex-end;
+    min-height: 36px;
+    padding: 0 8px;
+  }
+  .settings-footer {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .settings-footer .settings-secondary,
+  .settings-footer .settings-primary {
+    flex: 1 1 130px;
+    min-height: 44px;
+  }
+  .settings-error {
+    flex: 0 0 100%;
+    order: -1;
+  }
+  html.dark .settings-nav {
+    border-bottom-color: #354253;
+  }
+}
 </style>
