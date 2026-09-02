@@ -50,6 +50,7 @@ const searchInput = ref<HTMLInputElement>()
 const activeCategoryId = ref('')
 const draggedCategoryId = ref<string | null>(null)
 const dragOverCategoryId = ref<string | null>(null)
+const faviconCache = new Map<string, string>()
 
 const visibleLinks = computed(() => {
   const query = searchQuery.value.trim().toLocaleLowerCase()
@@ -231,9 +232,17 @@ async function submitCategory() {
 }
 
 function favicon(link: LinkItem) {
-  if (link.icon) return link.icon
+  const cacheKey = `${link.id}:${link.icon || ''}:${link.url}`
+  const cached = faviconCache.get(cacheKey)
+  if (cached) return cached
+  if (link.icon) {
+    faviconCache.set(cacheKey, link.icon)
+    return link.icon
+  }
   try {
-    return `/api/favicon?domain=${encodeURIComponent(new URL(link.url).hostname)}`
+    const source = `/api/favicon?domain=${encodeURIComponent(new URL(link.url).hostname)}`
+    faviconCache.set(cacheKey, source)
+    return source
   } catch {
     return '/favicon.ico'
   }
@@ -405,6 +414,15 @@ onMounted(async () => {
               <a
                 v-for="link in nav.pinnedLinks.value"
                 :key="link.id"
+                v-memo="[
+                  link.id,
+                  link.title,
+                  link.description,
+                  link.url,
+                  link.icon,
+                  link.pinned,
+                  compact,
+                ]"
                 class="link-card"
                 :href="link.url"
                 target="_blank"
@@ -461,6 +479,16 @@ onMounted(async () => {
               <article
                 v-for="link in categoryLinks(category.id)"
                 :key="link.id"
+                v-memo="[
+                  link.id,
+                  link.title,
+                  link.description,
+                  link.url,
+                  link.icon,
+                  link.pinned,
+                  compact,
+                  nav.token.value,
+                ]"
                 class="link-card-wrap"
               >
                 <a class="link-card" :href="link.url" target="_blank" rel="noopener noreferrer">
@@ -642,13 +670,11 @@ onMounted(async () => {
   position: fixed;
   inset: 0 auto 0 0;
   width: 250px;
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.72), rgba(246, 249, 255, 0.54));
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(246, 249, 255, 0.86));
   border-right: 1px solid rgba(255, 255, 255, 0.72);
   box-shadow:
     12px 0 38px rgba(48, 65, 104, 0.1),
     inset -1px 0 rgba(255, 255, 255, 0.38);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
   display: flex;
   flex-direction: column;
   z-index: 40;
@@ -707,6 +733,7 @@ onMounted(async () => {
   padding: 16px 10px;
   overflow: auto;
   flex: 1;
+  overscroll-behavior: contain;
 }
 .category-nav button,
 .sidebar-footer button {
@@ -774,9 +801,7 @@ onMounted(async () => {
   position: sticky;
   top: 0;
   z-index: 30;
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid #e7eaf0;
   display: flex;
   align-items: center;
@@ -944,6 +969,7 @@ onMounted(async () => {
 }
 .link-card-wrap {
   position: relative;
+  contain: layout paint;
 }
 .link-card {
   min-height: 82px;
@@ -1171,7 +1197,7 @@ html.dark .app-shell {
     radial-gradient(circle at 88% 18%, rgba(135, 78, 174, 0.18), transparent 26%);
 }
 html.dark .sidebar {
-  background: linear-gradient(155deg, rgba(33, 42, 55, 0.76), rgba(24, 31, 41, 0.64));
+  background: linear-gradient(155deg, rgba(33, 42, 55, 0.94), rgba(24, 31, 41, 0.9));
   border-color: rgba(172, 194, 230, 0.16);
   box-shadow:
     12px 0 42px rgba(0, 0, 0, 0.25),
@@ -1192,7 +1218,7 @@ html.dark .card-actions {
   border-color: #343d49;
 }
 html.dark .header {
-  background: rgba(34, 41, 51, 0.76);
+  background: rgba(34, 41, 51, 0.96);
   border-color: rgba(172, 194, 230, 0.14);
 }
 html.dark .search-box {
