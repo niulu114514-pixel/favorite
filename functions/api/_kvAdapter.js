@@ -22,7 +22,8 @@ export function getCorsHeaders(env) {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, x-auth-password',
+    'Access-Control-Allow-Headers':
+      'Content-Type, Accept, Authorization, x-auth-password, MCP-Protocol-Version, Mcp-Session-Id',
     'Access-Control-Max-Age': '86400',
   };
 }
