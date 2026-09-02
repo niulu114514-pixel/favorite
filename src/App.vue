@@ -24,6 +24,9 @@ import {
 } from 'lucide-vue-next'
 import type { Category, LinkItem } from '../types'
 import { useCloudNav } from './composables/useCloudNav'
+import SettingsPanel from './components/SettingsPanel.vue'
+import { fallbackIconUrl } from './services/iconService'
+import { generateLinkDescription, suggestCategory } from './services/aiService'
 
 const nav = useCloudNav()
 const searchQuery = ref('')
@@ -34,10 +37,13 @@ const compact = ref(localStorage.getItem('cloudnav_view_mode') === 'compact')
 const linkModalOpen = ref(false)
 const authModalOpen = ref(false)
 const categoryModalOpen = ref(false)
+const settingsOpen = ref(false)
 const editingLink = ref<Partial<LinkItem>>({})
 const editingCategory = ref<Partial<Category>>({})
 const password = ref('')
 const authError = ref('')
+const aiBusy = ref(false)
+const aiError = ref('')
 const searchInput = ref<HTMLInputElement>()
 
 const visibleLinks = computed(() => {
@@ -100,6 +106,32 @@ async function submitLink() {
   linkModalOpen.value = false
 }
 
+async function generateWithAI() {
+  if (!editingLink.value.title?.trim() || !editingLink.value.url?.trim()) {
+    aiError.value = '请先填写名称和网址'
+    return
+  }
+  aiBusy.value = true
+  aiError.value = ''
+  try {
+    const [description, categoryId] = await Promise.all([
+      generateLinkDescription(editingLink.value.title, editingLink.value.url, nav.config.ai),
+      suggestCategory(
+        editingLink.value.title,
+        editingLink.value.url,
+        nav.categories.value,
+        nav.config.ai
+      ),
+    ])
+    if (description) editingLink.value.description = description
+    if (categoryId) editingLink.value.categoryId = categoryId
+  } catch (error) {
+    aiError.value = error instanceof Error ? error.message : 'AI 请求失败'
+  } finally {
+    aiBusy.value = false
+  }
+}
+
 async function deleteLink(link: LinkItem) {
   if (confirm(`确定删除“${link.title}”吗？`)) await nav.removeLink(link.id)
 }
@@ -136,10 +168,33 @@ async function submitCategory() {
 function favicon(link: LinkItem) {
   if (link.icon) return link.icon
   try {
-    return `https://www.google.com/s2/favicons?domain=${new URL(link.url).hostname}&sz=64`
+    return `/api/favicon?domain=${encodeURIComponent(new URL(link.url).hostname)}`
   } catch {
-    return ''
+    return '/favicon.ico'
   }
+}
+
+function fallbackIcon(event: Event, link: LinkItem) {
+  const image = event.target as HTMLImageElement
+  const fallback = fallbackIconUrl(link.url)
+  if (image.src !== new URL(fallback, window.location.origin).href) image.src = fallback
+}
+
+function onSettingsSaved(settings: {
+  ai: typeof nav.config.ai
+  icon: typeof nav.config.icon
+  websiteTitle: string
+  navigationName: string
+  showPinned: boolean
+  defaultViewMode: 'compact' | 'detailed'
+}) {
+  Object.assign(nav.config.ai, settings.ai)
+  Object.assign(nav.config.icon, settings.icon)
+  nav.config.title = settings.websiteTitle || nav.config.title
+  nav.config.navigationName = settings.navigationName
+  nav.config.showPinned = settings.showPinned
+  nav.config.defaultViewMode = settings.defaultViewMode
+  document.title = nav.config.title
 }
 
 onMounted(async () => {
@@ -235,6 +290,14 @@ onMounted(async () => {
           <button class="icon-button" title="切换主题" @click="toggleTheme">
             <Sun v-if="dark" /><Moon v-else />
           </button>
+          <button
+            v-if="nav.token.value"
+            class="icon-button"
+            title="设置"
+            @click="settingsOpen = true"
+          >
+            <Settings />
+          </button>
           <button v-if="nav.token.value" class="primary-button" @click="openLinkModal()">
             <Plus :size="18" /><span>添加网站</span>
           </button>
@@ -266,7 +329,7 @@ onMounted(async () => {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <img :src="favicon(link)" alt="" />
+                <img :src="favicon(link)" alt="" @error="fallbackIcon($event, link)" />
                 <div>
                   <strong>{{ link.title }}</strong>
                   <p v-if="!compact">{{ link.description || link.url }}</p>
@@ -311,7 +374,7 @@ onMounted(async () => {
                 class="link-card-wrap"
               >
                 <a class="link-card" :href="link.url" target="_blank" rel="noopener noreferrer">
-                  <img :src="favicon(link)" alt="" />
+                  <img :src="favicon(link)" alt="" @error="fallbackIcon($event, link)" />
                   <div>
                     <strong>{{ link.title }}</strong>
                     <p v-if="!compact">{{ link.description || link.url }}</p>
@@ -376,6 +439,12 @@ onMounted(async () => {
             placeholder="一句话介绍这个网站"
           />
         </label>
+        <div class="ai-link-actions">
+          <button type="button" class="secondary-button" :disabled="aiBusy" @click="generateWithAI">
+            <Sparkles :size="15" />{{ aiBusy ? 'AI 处理中…' : 'AI 生成描述并分类' }}
+          </button>
+          <span v-if="aiError" class="form-error">{{ aiError }}</span>
+        </div>
         <label
           >图标网址<input v-model="editingLink.icon" placeholder="留空将自动获取 favicon"
         /></label>
@@ -444,6 +513,21 @@ onMounted(async () => {
         </div>
       </form>
     </div>
+
+    <SettingsPanel
+      :open="settingsOpen"
+      :config="{
+        ai: nav.config.ai,
+        icon: nav.config.icon,
+        websiteTitle: nav.config.title,
+        navigationName: nav.config.navigationName,
+        showPinned: nav.config.showPinned,
+        defaultViewMode: nav.config.defaultViewMode,
+      }"
+      :save-config="nav.saveConfig"
+      @close="settingsOpen = false"
+      @saved="onSettingsSaved"
+    />
   </div>
 </template>
 

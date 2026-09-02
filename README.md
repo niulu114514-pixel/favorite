@@ -8,9 +8,12 @@
 - 分类侧栏与锚点导航，响应式适配桌面和移动端
 - 站内搜索，也可一键跳转 Google 互联网搜索
 - 网站卡片支持置顶、添加、编辑和删除
+- 新增网站时自动获取 favicon，支持 EdgeOne Blob 缓存、Google、FaviconExtractor、自定义 URL/API
 - 管理登录与权限控制，登录状态保存在浏览器本地
 - localStorage 快速缓存，登录后自动同步 EdgeOne KV
 - 明暗主题、紧凑/详细视图、书签小程序参数预填
+- 设置面板支持网站标题、图标策略、默认视图和置顶区域配置
+- AI 辅助生成网站描述与分类建议，支持 Gemini、OpenAI 兼容 API、Claude
 - 保留 EdgeOne Pages Functions：认证、KV 存储、favicon 和上传接口
 
 ## 技术栈
@@ -47,6 +50,16 @@ pnpm preview     # 本地预览生产构建
 - 输出目录：`dist`
 
 后端需要绑定名为 `CLOUDNAV_KV` 的 KV 命名空间，并设置 `PASSWORD` 环境变量作为管理密码。可选设置 `ALLOWED_ORIGIN` 限制跨域来源。
+
+## MCP 部署
+
+仓库根目录的 `.mcp.json` 已预置 EdgeOne Pages Deploy MCP。将仓库添加到支持 MCP 的客户端后，可以直接运行：
+
+```bash
+npx edgeone-pages-mcp-fullstack --region china
+```
+
+也可以在登录后的「设置 → MCP / EdgeOne 部署」中复制命令和打开官方文档。
 
 ## 项目结构
 
