@@ -43,6 +43,7 @@ const linkModalOpen = ref(false)
 const authModalOpen = ref(false)
 const categoryModalOpen = ref(false)
 const settingsOpen = ref(false)
+const hideTools = ref(localStorage.getItem('cloudnav_hide_tools') === '1')
 const editingLink = ref<Partial<LinkItem>>({})
 const editingCategory = ref<Partial<Category>>({})
 const password = ref('')
@@ -145,10 +146,8 @@ function handleCategoryClick(event: MouseEvent, category: Category) {
 
 const visibleLinks = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
-  if (!query || externalSearch.value) return nav.links.value.filter(link => !link.hidden)
-  return nav.links.value
-    .filter(link => !link.hidden)
-    .filter(link => searchableText(link).includes(query))
+  if (!query || externalSearch.value) return nav.links.value
+  return nav.links.value.filter(link => searchableText(link).includes(query))
 })
 
 function searchableText(link: LinkItem) {
@@ -202,6 +201,11 @@ function toggleTheme() {
 function toggleView() {
   compact.value = !compact.value
   localStorage.setItem('cloudnav_view_mode', compact.value ? 'compact' : 'detailed')
+}
+
+function toggleHideTools() {
+  hideTools.value = !hideTools.value
+  localStorage.setItem('cloudnav_hide_tools', hideTools.value ? '1' : '0')
 }
 
 // 登录凭据过期（401）时自动弹出登录框，替代静默的“保存失败”。
@@ -617,6 +621,15 @@ onBeforeUnmount(() => {
           >
             <LayoutList v-if="compact" /><Grid2X2 v-else />
           </button>
+          <button
+            v-if="nav.token.value"
+            class="icon-button"
+            :title="hideTools ? '显示编辑/删除工具' : '隐藏编辑/删除工具'"
+            :aria-pressed="hideTools"
+            @click="toggleHideTools"
+          >
+            <EyeOff v-if="hideTools" /><Eye v-else />
+          </button>
           <button class="icon-button" title="切换主题" @click="toggleTheme">
             <Sun v-if="dark" /><Moon v-else />
           </button>
@@ -732,10 +745,10 @@ onBeforeUnmount(() => {
                 :links="categoryLinks(category.id)"
                 :compact="compact"
                 :can-manage="Boolean(nav.token.value)"
+                :hide-tools="hideTools"
                 @pin="nav.togglePin"
                 @edit="openLinkModal"
                 @delete="deleteLink"
-                @hide="nav.toggleLinkHidden"
                 @reorder="orderedIds => nav.reorderLinks(category.id, orderedIds)"
               />
               <button

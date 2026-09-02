@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ArrowDown, ArrowUp, EyeOff, GripVertical, Pencil, Pin, Trash2 } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, GripVertical, Pencil, Pin, Trash2 } from 'lucide-vue-next'
 import type { LinkItem } from '../../types'
 import { favicon, handleFaviconError } from '../composables/useFavicon'
 import { safeTargetUrl } from '../utils/url'
@@ -9,13 +9,14 @@ const props = defineProps<{
   links: LinkItem[]
   compact: boolean
   canManage: boolean
+  /** 隐藏编辑/删除等工具条（管理员预览用，纯展示开关） */
+  hideTools?: boolean
 }>()
 
 const emit = defineEmits<{
   pin: [id: string]
   edit: [link: LinkItem]
   delete: [link: LinkItem]
-  hide: [id: string]
   reorder: [orderedIds: string[]]
 }>()
 
@@ -91,7 +92,7 @@ function dropOn(overIdValue: string) {
           <p v-if="!compact">{{ link.description || link.url }}</p>
         </div>
       </a>
-      <div v-if="canManage" class="card-actions">
+      <div v-if="canManage && !hideTools" class="card-actions">
         <button
           class="action-drag"
           :title="'拖动或点击上下箭头调整顺序'"
@@ -105,9 +106,6 @@ function dropOn(overIdValue: string) {
         <button :title="'下移'" @click="move(link.id, 1)"><ArrowDown :size="14" /></button>
         <button :title="link.pinned ? '取消置顶' : '置顶'" @click="emit('pin', link.id)">
           <Pin :size="14" :fill="link.pinned ? 'currentColor' : 'none'" />
-        </button>
-        <button :title="link.hidden ? '取消隐藏（管理员可见）' : '隐藏（仅管理员）'" @click="emit('hide', link.id)">
-          <EyeOff :size="14" :fill="link.hidden ? 'currentColor' : 'none'" />
         </button>
         <button :title="'编辑'" @click="emit('edit', link)"><Pencil :size="14" /></button>
         <button :title="'删除'" @click="emit('delete', link)"><Trash2 :size="14" /></button>

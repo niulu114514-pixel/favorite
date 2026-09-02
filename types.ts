@@ -14,8 +14,6 @@ export interface LinkItem {
   iconConfig?: Record<string, unknown>;
   customIconUrl?: string;
   edgeoneBlobUrl?: string;
-  /** 管理员隐藏单个卡片（仅管理员可见其编辑/隐藏入口） */
-  hidden?: boolean;
 }
 
 export interface Category {
