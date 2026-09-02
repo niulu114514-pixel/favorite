@@ -5,6 +5,7 @@ import { getCorsHeaders, getKV, jsonResponse, verifyAuth } from './_kvAdapter.js
 
 const REQUEST_TIMEOUT_MS = 10_000
 const MAX_BACKUP_BYTES = 2 * 1024 * 1024
+const BACKUP_PREFIX = 'cloudnav_backup'
 
 function credential(request) {
   const authorization = request.headers.get('authorization') || ''
@@ -58,6 +59,51 @@ async function fetchWithTimeout(url, init) {
   }
 }
 
+/** 拼接自定义文件夹目录，返回以 / 结尾的目录 URL */
+function buildDirUrl(baseUrl, folder) {
+  const f = String(folder || '')
+    .trim()
+    .replace(/^\/+|\/+$/g, '')
+  return f ? baseUrl + f + '/' : baseUrl
+}
+
+/** 防止文件名穿越，仅允许安全的纯文件名 */
+function sanitizeFilename(name) {
+  const base = String(name || '').split('/').filter(Boolean).pop() || ''
+  return /^[a-zA-Z0-9._-]+$/.test(base) ? base : ''
+}
+
+function defaultBackupFilename() {
+  const ts = new Date()
+    .toISOString()
+    .replace(/[:.]/g, '-')
+    .slice(0, 19)
+  return `${BACKUP_PREFIX}_${ts}.json`
+}
+
+/** 粗粒度解析 PROPFIND 的多状态响应，兼容 d:、D:、lp1: 等不同命名空间前缀 */
+function parsePropfind(body) {
+  const parts = body.split(/<(?:[^>:]+:)?response[\s>]/gi)
+  const items = []
+  for (let i = 1; i < parts.length; i++) {
+    let block = parts[i]
+    const close = block.search(/<\/(?:[^>:]+:)?response\s*>/i)
+    if (close !== -1) block = block.slice(0, close)
+    const hrefMatch = block.match(/<(?:[^>:]+:)?href(?:\s[^>]*)?>([^<]*)</i)
+    if (!hrefMatch) continue
+    const href = decodeURIComponent(hrefMatch[1].trim())
+    const sizeMatch = block.match(/<(?:[^>:]+:)?getcontentlength(?:\s[^>]*)?>([0-9]+)/i)
+    const modMatch = block.match(/<(?:[^>:]+:)?getlastmodified(?:\s[^>]*)?>([^<]*)</i)
+    items.push({
+      name: href.split('/').filter(Boolean).pop() || href,
+      href,
+      size: sizeMatch ? Number(sizeMatch[1]) : 0,
+      modified: modMatch ? modMatch[1] : '',
+    })
+  }
+  return items
+}
+
 export async function onRequest(context) {
   const { request, env } = context
   const corsHeaders = getCorsHeaders(env)
@@ -95,11 +141,10 @@ export async function onRequest(context) {
     let baseUrl = parsedBaseUrl.toString()
     if (!baseUrl.endsWith('/')) baseUrl += '/'
 
-    const filename = 'cloudnav_backup.json'
-    const fileUrl = baseUrl + filename
+    const dirUrl = buildDirUrl(baseUrl, config.folder)
     const authHeader = `Basic ${btoa(`${config.username}:${config.password}`)}`
 
-    let fetchUrl = baseUrl
+    let fetchUrl = dirUrl
     let method = 'PROPFIND'
     let headers = {
       Authorization: authHeader,
@@ -107,24 +152,30 @@ export async function onRequest(context) {
     }
     let requestBody = undefined
 
+    const payloadFilename = sanitizeFilename(payload && payload.filename)
+
     if (operation === 'check') {
-      fetchUrl = baseUrl
+      fetchUrl = dirUrl
       method = 'PROPFIND'
       headers['Depth'] = '0'
-    } else if (operation === 'upload') {
-      fetchUrl = fileUrl
+    } else if (operation === 'list') {
+      fetchUrl = dirUrl
+      method = 'PROPFIND'
+      headers['Depth'] = '1'
+    } else if (operation === 'backup') {
+      fetchUrl = dirUrl + (payloadFilename || defaultBackupFilename())
       method = 'PUT'
       headers['Content-Type'] = 'application/json'
-      requestBody = JSON.stringify(payload)
-    } else if (operation === 'download') {
-      fetchUrl = fileUrl
+      requestBody = JSON.stringify(payload?.data ?? {})
+    } else if (operation === 'restore') {
+      fetchUrl = dirUrl + (payloadFilename || defaultBackupFilename())
       method = 'GET'
     } else {
       return jsonResponse({ error: 'Invalid operation' }, 400, corsHeaders)
     }
 
     if (
-      operation === 'upload' &&
+      operation === 'backup' &&
       new TextEncoder().encode(requestBody || '').byteLength > MAX_BACKUP_BYTES
     ) {
       return jsonResponse({ error: 'Backup file is too large' }, 413, corsHeaders)
@@ -132,11 +183,11 @@ export async function onRequest(context) {
 
     const response = await fetchWithTimeout(fetchUrl, { method, headers, body: requestBody })
 
-    if (operation === 'download') {
+    if (operation === 'restore') {
+      if (response.status === 404) {
+        return jsonResponse({ error: 'Backup file not found' }, 404, corsHeaders)
+      }
       if (!response.ok) {
-        if (response.status === 404) {
-          return jsonResponse({ error: 'Backup file not found' }, 404, corsHeaders)
-        }
         return jsonResponse(
           { error: `WebDAV Error: ${response.status}` },
           response.status,
@@ -147,11 +198,26 @@ export async function onRequest(context) {
       if (contentLength > MAX_BACKUP_BYTES) {
         return jsonResponse({ error: 'Backup file is too large' }, 413, corsHeaders)
       }
-      const data = JSON.parse(new TextDecoder().decode(await response.arrayBuffer()))
+      let data
+      try {
+        data = JSON.parse(new TextDecoder().decode(await response.arrayBuffer()))
+      } catch {
+        return jsonResponse({ error: 'Backup file is corrupted' }, 422, corsHeaders)
+      }
       return jsonResponse(data, 200, corsHeaders)
     }
 
-    const success = response.ok || response.status === 207
+    if (operation === 'list') {
+      const text = await response.text()
+      const all = response.ok || response.status === 207 ? parsePropfind(text) : []
+      const items = all.filter(item => {
+        const name = item.name.toLowerCase()
+        return name.startsWith(BACKUP_PREFIX) && name.endsWith('.json')
+      })
+      return jsonResponse({ success: true, items }, 200, corsHeaders)
+    }
+
+    const success = response.ok || response.status === 207 || response.status === 201
     return jsonResponse({ success, status: response.status }, 200, corsHeaders)
   } catch (err) {
     console.error('WebDAV API error:', err)

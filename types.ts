@@ -37,6 +37,13 @@ export interface WebDavConfig {
   username: string;
   password: string;
   enabled: boolean;
+  folder?: string;
+}
+
+export interface WebDavBackupItem {
+  name: string;
+  size: number;
+  modified: string;
 }
 
 export type AIProvider = 'google' | 'claude' | 'openai' | 'custom';

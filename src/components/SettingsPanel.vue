@@ -5,17 +5,29 @@ import {
   ArrowUp,
   Check,
   Cloud,
+  CloudUpload,
   Copy,
+  Download,
   ExternalLink,
   Folder,
+  FolderPlus,
   KeyRound,
   Palette,
+  Pencil,
+  RefreshCw,
   Save,
   Settings,
   Sparkles,
+  Trash2,
   X,
 } from 'lucide-vue-next'
-import type { AIConfig, Category, IconConfig, WebDavConfig } from '../../types'
+import type {
+  AIConfig,
+  Category,
+  IconConfig,
+  WebDavBackupItem,
+  WebDavConfig,
+} from '../../types'
 import { DEFAULT_ICON_CONFIG } from '../services/iconService'
 import { generateLinkDescription } from '../services/aiService'
 
@@ -36,6 +48,10 @@ const props = defineProps<{
   categories: Category[]
   saveConfigBatch: (configs: Record<string, unknown>) => Promise<void>
   reorderCategories: (orderedIds: string[]) => Promise<void>
+  buildBackup: () => Record<string, unknown>
+  restoreBackup: (data: Record<string, unknown>) => Promise<void>
+  saveCategory: (category: Partial<Category>) => Promise<void>
+  removeCategory: (id: string) => Promise<void>
 }>()
 const emit = defineEmits<{ close: []; saved: [settings: SettingsDraft] }>()
 const draft = reactive<SettingsDraft>(createDraft(props.config))
@@ -95,6 +111,9 @@ watch(
     aiMessage.value = ''
     saveError.value = ''
     webdavMessage.value = ''
+    backups.value = []
+    webdavBackupsLoaded.value = false
+    categoryFormOpen.value = false
   }
 )
 
@@ -138,6 +157,129 @@ async function testWebDav() {
   }
 }
 
+// ===== WebDAV 备份 / 恢复 / 列表 =====
+const backups = ref<WebDavBackupItem[]>([])
+const webdavBackupsLoaded = ref(false)
+
+const webdavConfigured = computed(
+  () => !!draft.webdav.url && !!draft.webdav.username && !!draft.webdav.password
+)
+
+function runWebDav<T>(operation: string, payload?: unknown): Promise<T> {
+  return fetch('/api/webdav', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-auth-password': props.token },
+    body: JSON.stringify({ operation, config: draft.webdav, payload }),
+  }).then<T>(async response => {
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok || result.success === false) {
+      throw new Error(result.error || `HTTP ${response.status}`)
+    }
+    return result as T
+  })
+}
+
+async function listBackups() {
+  webdavBusy.value = true
+  webdavMessage.value = ''
+  try {
+    const result = await runWebDav<{ items?: WebDavBackupItem[] }>('list')
+    backups.value = result.items || []
+    webdavBackupsLoaded.value = true
+    if (!backups.value.length) webdavMessage.value = '该目录暂没有备份文件'
+  } catch (error) {
+    webdavMessage.value = error instanceof Error ? error.message : '获取备份列表失败'
+  } finally {
+    webdavBusy.value = false
+  }
+}
+
+async function backupNow() {
+  webdavBusy.value = true
+  webdavMessage.value = ''
+  try {
+    const filename = `cloudnav_backup_${new Date()
+      .toISOString()
+      .replace(/[:.]/g, '-')
+      .slice(0, 19)}.json`
+    await runWebDav('backup', { filename, data: props.buildBackup() })
+    webdavMessage.value = '备份成功，已保存到 WebDAV'
+    await listBackups()
+  } catch (error) {
+    webdavMessage.value = error instanceof Error ? error.message : '备份失败'
+  } finally {
+    webdavBusy.value = false
+  }
+}
+
+async function restoreNow(filename: string) {
+  if (!window.confirm(`从“${filename}”恢复？当前数据将被备份文件覆盖。`)) return
+  webdavBusy.value = true
+  webdavMessage.value = ''
+  try {
+    const data = await runWebDav<Record<string, unknown>>('restore', { filename })
+    await props.restoreBackup(data)
+    webdavMessage.value = '恢复成功'
+  } catch (error) {
+    webdavMessage.value = error instanceof Error ? error.message : '恢复失败'
+  } finally {
+    webdavBusy.value = false
+  }
+}
+
+// ===== 分类创建 / 编辑 =====
+const categoryFormOpen = ref(false)
+const savingCategory = ref(false)
+const categoryForm = ref<{ id: string | null; name: string; parentId: string }>({
+  id: null,
+  name: '',
+  parentId: '',
+})
+
+const parentCategoryOptions = computed(() => {
+  const parents = new Set<string>()
+  for (const item of props.categories) {
+    if (!item.parentId || !props.categories.some(c => c.id === item.parentId)) parents.add(item.id)
+  }
+  return props.categories.filter(item => parents.has(item.id))
+})
+
+function openNewCategory() {
+  categoryForm.value = { id: null, name: '', parentId: '' }
+  categoryFormOpen.value = true
+}
+
+function openEditCategory(category: Category) {
+  categoryForm.value = { id: category.id, name: category.name, parentId: category.parentId || '' }
+  categoryFormOpen.value = true
+}
+
+function closeCategoryForm() {
+  categoryFormOpen.value = false
+}
+
+function confirmRemoveCategory(category: Category) {
+  if (!window.confirm(`删除“${category.name}”？该分类下的网站将移到常用推荐，二级分类也会一并删除。`))
+    return
+  void props.removeCategory(category.id)
+}
+
+async function submitCategoryForm() {
+  if (categoryForm.value.name.trim()) {
+    savingCategory.value = true
+    try {
+      await props.saveCategory({
+        id: categoryForm.value.id || undefined,
+        name: categoryForm.value.name.trim(),
+        parentId: categoryForm.value.parentId || undefined,
+      })
+      categoryFormOpen.value = false
+    } finally {
+      savingCategory.value = false
+    }
+  }
+}
+
 async function testAI() {
   testingAI.value = true
   aiMessage.value = ''
@@ -162,8 +304,16 @@ function scrollToSection(id: string) {
   settingsContent.value?.scrollTo({ top: 0 })
 }
 
+function formatSize(bytes: number) {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
 /** 分类排序：将 index 处分类移动到 offset 位置 */
-function moveCategory(index: number, offset: number) {
+const rowsCount = computed(() => props.categories.length)
+function moveSortRow(index: number, offset: number) {
   const next = [...props.categories]
   const to = index + offset
   if (index < 0 || to < 0 || to >= next.length) return
@@ -231,11 +381,56 @@ function moveCategory(index: number, offset: number) {
           >
             <h3><Folder :size="17" /> 分类排序</h3>
             <p class="settings-help">
-              上下移动调整分类在侧栏与首页的显示顺序，保存后立即同步到云端。
+              可在此新建、编辑与删除分类（支持创建二级分类），也可上下移动调整在侧栏与首页的显示顺序。
             </p>
+            <div class="settings-inline no-gap">
+              <button class="settings-primary" @click="openNewCategory">
+                <FolderPlus :size="15" />新建分类
+              </button>
+            </div>
+
+            <form v-if="categoryFormOpen" class="category-form" @submit.prevent="submitCategoryForm">
+              <label
+                >分类名称
+                <input
+                  v-model="categoryForm.name"
+                  type="text"
+                  required
+                  maxlength="40"
+                  placeholder="例如：开发工具"
+                />
+              </label>
+              <label>
+                上级分类
+                <select v-model="categoryForm.parentId">
+                  <option value="">一级分类（顶层）</option>
+                  <option
+                    v-for="parent in parentCategoryOptions.filter(
+                      item => item.id !== categoryForm.id
+                    )"
+                    :key="parent.id"
+                    :value="parent.id"
+                  >
+                    二级分类 · {{ parent.name }}
+                  </option>
+                </select>
+              </label>
+              <p class="modal-help">支持两级分类；二级分类会缩进显示在侧栏中。</p>
+              <div class="category-form-actions">
+                <button type="button" class="settings-secondary" @click="closeCategoryForm">
+                  取消
+                </button>
+                <button type="submit" class="settings-primary" :disabled="savingCategory">
+                  <Save :size="15" />{{ savingCategory ? '保存中…' : '保存' }}
+                </button>
+              </div>
+            </form>
+
             <div v-if="props.categories.length" class="category-sort-list">
               <div
-                v-for="(category, index) in props.categories"
+                v-for="(category, index) in props.categories.filter(
+                  c => !c.parentId || props.categories.some(p => p.id === c.parentId)
+                )"
                 :key="category.id"
                 class="category-sort-row"
                 :class="{ 'is-child': Boolean(category.parentId) }"
@@ -243,17 +438,28 @@ function moveCategory(index: number, offset: number) {
                 <Folder :size="15" />
                 <span class="category-sort-name">{{ category.name }}</span>
                 <div class="category-sort-actions">
+                  <button :title="'编辑'" @click="openEditCategory(category)">
+                    <Pencil :size="14" />
+                  </button>
+                  <button
+                    v-if="category.id !== 'common'"
+                    :title="'删除'"
+                    class="danger"
+                    @click="confirmRemoveCategory(category)"
+                  >
+                    <Trash2 :size="14" />
+                  </button>
                   <button
                     :disabled="index === 0"
                     :title="'上移'"
-                    @click="moveCategory(index, -1)"
+                    @click="moveSortRow(index, -1)"
                   >
                     <ArrowUp :size="14" />
                   </button>
                   <button
-                    :disabled="index === props.categories.length - 1"
+                    :disabled="index === rowsCount - 1"
                     :title="'下移'"
-                    @click="moveCategory(index, 1)"
+                    @click="moveSortRow(index, 1)"
                   >
                     <ArrowDown :size="14" />
                   </button>
@@ -335,8 +541,8 @@ function moveCategory(index: number, offset: number) {
           >
             <h3><Cloud :size="17" /> WebDAV 备份</h3>
             <p class="settings-help">
-              可连接 Nextcloud、坚果云或 NAS 的 WebDAV 目录。CloudNav 会在服务端保存
-              <code>cloudnav_backup.json</code>，仅用于备份与恢复，不影响日常收藏浏览。
+              可连接 Nextcloud、坚果云或 NAS 的 WebDAV 目录进行备份。CloudNav 会在服务端保存
+              <code>cloudnav_backup_*.json</code>，仅用于备份与恢复，不影响日常收藏浏览。
             </p>
             <label class="settings-check">
               <input v-model="draft.webdav.enabled" type="checkbox" />启用 WebDAV 备份
@@ -348,33 +554,72 @@ function moveCategory(index: number, offset: number) {
                   placeholder="https://dav.example.com/remote.php/dav/files/user/"
                   autocomplete="url"
               /></label>
-              <label>用户名<input v-model="draft.webdav.username" autocomplete="username" /></label>
+              <label
+                >备份文件夹（可选）<input
+                  v-model="draft.webdav.folder"
+                  placeholder="cloudnav/backups"
+                  autocomplete="off"
+              /></label>
             </div>
-            <label
-              >密码或应用专用密码<input
-                v-model="draft.webdav.password"
-                type="password"
-                autocomplete="new-password"
-            /></label>
-            <div class="settings-inline">
+            <div class="settings-grid">
+              <label>用户名<input v-model="draft.webdav.username" autocomplete="username" /></label>
+              <label
+                >密码或应用专用密码<input
+                  v-model="draft.webdav.password"
+                  type="password"
+                  autocomplete="new-password"
+              /></label>
+            </div>
+
+            <div class="settings-inline no-gap">
               <button
                 class="settings-secondary"
-                :disabled="
-                  webdavBusy ||
-                  !draft.webdav.url ||
-                  !draft.webdav.username ||
-                  !draft.webdav.password
-                "
+                :disabled="webdavBusy || !webdavConfigured"
                 @click="testWebDav"
               >
-                <Cloud :size="15" />{{ webdavBusy ? '测试中…' : '测试连接' }}
+                <Cloud :size="15" />{{ webdavBusy ? '操作中…' : '测试连接' }}
               </button>
-              <span
-                v-if="webdavMessage"
-                class="settings-result"
-                :class="{ error: !webdavMessage.includes('成功') }"
-                >{{ webdavMessage }}</span
+              <button
+                class="settings-primary"
+                :disabled="webdavBusy || !webdavConfigured"
+                @click="backupNow"
               >
+                <CloudUpload :size="15" />立即备份
+              </button>
+              <button
+                class="settings-secondary"
+                :disabled="webdavBusy || !webdavConfigured"
+                @click="listBackups"
+              >
+                <RefreshCw :size="15" />查看备份
+              </button>
+            </div>
+            <span
+              v-if="webdavMessage"
+              class="settings-result"
+              :class="{ error: !webdavMessage.includes('成功') && !webdavMessage.includes('暂没有') }"
+              >{{ webdavMessage }}</span
+            >
+
+            <div v-if="webdavBackupsLoaded" class="backup-list">
+              <div class="backup-list-title">
+                已备份的文件（{{ backups.length }}）
+              </div>
+              <div v-if="!backups.length" class="backup-list-empty">还没有备份，点击“立即备份”创建。</div>
+              <div v-for="item in backups" :key="item.name" class="backup-row">
+                <div class="backup-meta">
+                  <span class="backup-name">{{ item.name }}</span>
+                  <span v-if="item.modified" class="backup-date">{{ item.modified }}</span>
+                  <span v-if="item.size" class="backup-size">{{ formatSize(item.size) }}</span>
+                </div>
+                <button
+                  class="backup-restore"
+                  :disabled="webdavBusy"
+                  @click="restoreNow(item.name)"
+                >
+                  <Download :size="14" />恢复
+                </button>
+              </div>
             </div>
           </section>
 
@@ -764,6 +1009,95 @@ html.dark .settings-secondary {
 .category-sort-actions button:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+.category-sort-actions button.danger:hover {
+  background: rgba(220, 53, 69, 0.12);
+  color: #dc3545;
+}
+.settings-inline.no-gap {
+  margin-top: 4px;
+}
+/* ===== 分类新建/编辑表单 ===== */
+.category-form {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px dashed var(--c-border-strong);
+  border-radius: 12px;
+  background: var(--c-surface);
+}
+.category-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 14px;
+}
+/* ===== WebDAV 备份列表 ===== */
+.backup-list {
+  margin-top: 16px;
+  border-top: 1px solid var(--c-border);
+  padding-top: 12px;
+}
+.backup-list-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-muted);
+  margin-bottom: 8px;
+}
+.backup-list-empty {
+  font-size: 12px;
+  color: var(--c-faint);
+  padding: 8px 0;
+}
+.backup-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  background: var(--c-surface);
+  margin-bottom: 7px;
+}
+.backup-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.backup-name {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--c-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.backup-date,
+.backup-size {
+  font-size: 11px;
+  color: var(--c-faint);
+}
+.backup-restore {
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(89, 124, 226, 0.14);
+  color: var(--c-primary);
+  font-size: 12px;
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.backup-restore:hover:not(:disabled) {
+  background: rgba(89, 124, 226, 0.24);
+}
+.backup-restore:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 .settings-result.error,
 .settings-error {

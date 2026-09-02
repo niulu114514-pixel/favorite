@@ -444,6 +444,24 @@ async function submitCategory() {
   categoryModalOpen.value = false
 }
 
+/** 生成 WebDAV 备份数据 */
+function buildBackupData() {
+  return {
+    version: 1,
+    createdAt: new Date().toISOString(),
+    app: 'CloudNav',
+    links: nav.links.value,
+    categories: nav.categories.value,
+  }
+}
+
+/** 从 WebDAV 备份恢复数据并持久化 */
+async function restoreBackupData(data: Record<string, unknown>) {
+  if (Array.isArray(data.links)) nav.links.value = data.links as LinkItem[]
+  if (Array.isArray(data.categories)) nav.categories.value = data.categories as Category[]
+  await nav.persist()
+}
+
 function onSettingsSaved(settings: {
   ai: typeof nav.config.ai
   icon: typeof nav.config.icon
@@ -572,9 +590,6 @@ onBeforeUnmount(() => {
         </template>
       </nav>
       <div class="sidebar-footer">
-        <button v-if="nav.token.value" @click="openCategoryModal()">
-          <Plus :size="16" /> 新建分类
-        </button>
         <button v-if="nav.token.value" @click="nav.logout()"><LogOut :size="16" /> 退出管理</button>
         <button v-else @click="authModalOpen = true"><LogIn :size="16" /> 管理登录</button>
       </div>
@@ -919,6 +934,10 @@ onBeforeUnmount(() => {
       :categories="orderedCategories"
       :save-config-batch="nav.saveConfigBatch"
       :reorder-categories="nav.reorderCategories"
+      :build-backup="buildBackupData"
+      :restore-backup="restoreBackupData"
+      :save-category="nav.saveCategory"
+      :remove-category="nav.removeCategory"
       @close="settingsOpen = false"
       @saved="onSettingsSaved"
     />
