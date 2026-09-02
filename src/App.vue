@@ -557,7 +557,7 @@ onBeforeUnmount(() => {
                 ><ChevronRight
                   :size="15"
                   :class="{ expanded: isCategoryExpanded(category.id) }" /></span
-              ><ChevronRight v-else :size="15" />
+              >
             </button>
           </div>
           <template v-for="child in categoryChildren(category.id)" :key="child.id">
@@ -1299,6 +1299,17 @@ onBeforeUnmount(() => {
   margin-left: 22px;
   padding-left: 18px;
   border-left: 2px solid rgba(123, 156, 255, 0.18);
+  margin-bottom: 22px;
+}
+.subcategory-section h2 {
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+.subcategory-section h2 span {
+  font-size: 10px;
+}
+.subcategory-section:last-child {
+  margin-bottom: 0;
 }
 .pinned-section h2 {
   color: #4968ca;

@@ -113,7 +113,7 @@ watch(
     webdavMessage.value = ''
     backups.value = []
     webdavBackupsLoaded.value = false
-    categoryFormOpen.value = false
+    categoryModalOpen.value = false
   }
 )
 
@@ -227,15 +227,16 @@ async function restoreNow(filename: string) {
   }
 }
 
-// ===== 分类创建 / 编辑 =====
-const categoryFormOpen = ref(false)
+// ===== 分类创建 / 编辑（弹窗）=====
+const categoryModalOpen = ref(false)
 const savingCategory = ref(false)
-const categoryForm = ref<{ id: string | null; name: string; parentId: string }>({
+const categoryModal = ref<{ id: string | null; name: string; parentId: string }>({
   id: null,
   name: '',
   parentId: '',
 })
 
+/** 可作为父级的分类（一级分类，即没有 parentId） */
 const parentCategoryOptions = computed(() => {
   const parents = new Set<string>()
   for (const item of props.categories) {
@@ -244,18 +245,49 @@ const parentCategoryOptions = computed(() => {
   return props.categories.filter(item => parents.has(item.id))
 })
 
+/** 一级分类，按当前顺序排列 */
+const topRows = computed(() =>
+  props.categories.filter(c => !c.parentId || !props.categories.some(p => p.id === c.parentId))
+)
+
+/** 某个一级分类下的二级分类 */
+function childrenOf(parentId: string) {
+  return props.categories.filter(c => c.parentId === parentId)
+}
+
 function openNewCategory() {
-  categoryForm.value = { id: null, name: '', parentId: '' }
-  categoryFormOpen.value = true
+  categoryModal.value = { id: null, name: '', parentId: '' }
+  categoryModalOpen.value = true
+}
+
+/** 直接给指定一级分类添加二级分类，默认选中该父级 */
+function openAddChild(parent: Category) {
+  categoryModal.value = { id: null, name: '', parentId: parent.id }
+  categoryModalOpen.value = true
 }
 
 function openEditCategory(category: Category) {
-  categoryForm.value = { id: category.id, name: category.name, parentId: category.parentId || '' }
-  categoryFormOpen.value = true
+  categoryModal.value = { id: category.id, name: category.name, parentId: category.parentId || '' }
+  categoryModalOpen.value = true
 }
 
 function closeCategoryForm() {
-  categoryFormOpen.value = false
+  categoryModalOpen.value = false
+}
+
+async function submitCategoryForm() {
+  if (!categoryModal.value.name.trim()) return
+  savingCategory.value = true
+  try {
+    await props.saveCategory({
+      id: categoryModal.value.id || undefined,
+      name: categoryModal.value.name.trim(),
+      parentId: categoryModal.value.parentId || undefined,
+    })
+    categoryModalOpen.value = false
+  } finally {
+    savingCategory.value = false
+  }
 }
 
 function confirmRemoveCategory(category: Category) {
@@ -264,20 +296,37 @@ function confirmRemoveCategory(category: Category) {
   void props.removeCategory(category.id)
 }
 
-async function submitCategoryForm() {
-  if (categoryForm.value.name.trim()) {
-    savingCategory.value = true
-    try {
-      await props.saveCategory({
-        id: categoryForm.value.id || undefined,
-        name: categoryForm.value.name.trim(),
-        parentId: categoryForm.value.parentId || undefined,
-      })
-      categoryFormOpen.value = false
-    } finally {
-      savingCategory.value = false
+/**
+ * 分类排序：仅在同一层级内移动（一级在一级之间、二级在同一个父级之下）。
+ * 一级分类移动时会连同其二级子分类一起移动，从而保证层级不被破坏。
+ * parentId 为 null 表示移动一级分类；否则表示在 parentId 下的二级分类中移动。
+ */
+async function moveRow(parentId: string | null, index: number, offset: number) {
+  const members = parentId ? childrenOf(parentId) : topRows.value
+  const to = index + offset
+  if (to < 0 || to >= members.length) return
+  const ids = members.map(item => item.id)
+  ids.splice(to, 0, ids.splice(index, 1)[0])
+  await props.reorderCategories(rebuildOrder(parentId, ids))
+}
+
+/** 根据同层级的期望顺序，重建所有分类的整体顺序（一级在前、其二级紧跟其后） */
+function rebuildOrder(parentId: string | null, reorderedLevelIds: string[]): string[] {
+  const ordered: string[] = []
+  if (parentId === null) {
+    for (const topId of reorderedLevelIds) {
+      ordered.push(topId)
+      for (const child of childrenOf(topId)) ordered.push(child.id)
+    }
+  } else {
+    for (const top of topRows.value) {
+      ordered.push(top.id)
+      const children =
+        top.id === parentId ? reorderedLevelIds : childrenOf(top.id).map(child => child.id)
+      for (const childId of children) ordered.push(childId)
     }
   }
+  return ordered
 }
 
 async function testAI() {
@@ -311,16 +360,6 @@ function formatSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-/** 分类排序：将 index 处分类移动到 offset 位置 */
-const rowsCount = computed(() => props.categories.length)
-function moveSortRow(index: number, offset: number) {
-  const next = [...props.categories]
-  const to = index + offset
-  if (index < 0 || to < 0 || to >= next.length) return
-  const [moved] = next.splice(index, 1)
-  next.splice(to, 0, moved)
-  void props.reorderCategories(next.map(item => item.id))
-}
 </script>
 
 <template>
@@ -381,7 +420,7 @@ function moveSortRow(index: number, offset: number) {
           >
             <h3><Folder :size="17" /> 分类排序</h3>
             <p class="settings-help">
-              可在此新建、编辑与删除分类（支持创建二级分类），也可上下移动调整在侧栏与首页的显示顺序。
+              一级分类可上下移动并连同其二级子分类一起调整；二级仅能在所在父级内移动。渲染顺序与侧栏、首页一致。
             </p>
             <div class="settings-inline no-gap">
               <button class="settings-primary" @click="openNewCategory">
@@ -389,82 +428,82 @@ function moveSortRow(index: number, offset: number) {
               </button>
             </div>
 
-            <form v-if="categoryFormOpen" class="category-form" @submit.prevent="submitCategoryForm">
-              <label
-                >分类名称
-                <input
-                  v-model="categoryForm.name"
-                  type="text"
-                  required
-                  maxlength="40"
-                  placeholder="例如：开发工具"
-                />
-              </label>
-              <label>
-                上级分类
-                <select v-model="categoryForm.parentId">
-                  <option value="">一级分类（顶层）</option>
-                  <option
-                    v-for="parent in parentCategoryOptions.filter(
-                      item => item.id !== categoryForm.id
-                    )"
-                    :key="parent.id"
-                    :value="parent.id"
-                  >
-                    二级分类 · {{ parent.name }}
-                  </option>
-                </select>
-              </label>
-              <p class="modal-help">支持两级分类；二级分类会缩进显示在侧栏中。</p>
-              <div class="category-form-actions">
-                <button type="button" class="settings-secondary" @click="closeCategoryForm">
-                  取消
-                </button>
-                <button type="submit" class="settings-primary" :disabled="savingCategory">
-                  <Save :size="15" />{{ savingCategory ? '保存中…' : '保存' }}
-                </button>
-              </div>
-            </form>
-
-            <div v-if="props.categories.length" class="category-sort-list">
-              <div
-                v-for="(category, index) in props.categories.filter(
-                  c => !c.parentId || props.categories.some(p => p.id === c.parentId)
-                )"
-                :key="category.id"
-                class="category-sort-row"
-                :class="{ 'is-child': Boolean(category.parentId) }"
-              >
-                <Folder :size="15" />
-                <span class="category-sort-name">{{ category.name }}</span>
-                <div class="category-sort-actions">
-                  <button :title="'编辑'" @click="openEditCategory(category)">
-                    <Pencil :size="14" />
-                  </button>
-                  <button
-                    v-if="category.id !== 'common'"
-                    :title="'删除'"
-                    class="danger"
-                    @click="confirmRemoveCategory(category)"
-                  >
-                    <Trash2 :size="14" />
-                  </button>
-                  <button
-                    :disabled="index === 0"
-                    :title="'上移'"
-                    @click="moveSortRow(index, -1)"
-                  >
-                    <ArrowUp :size="14" />
-                  </button>
-                  <button
-                    :disabled="index === rowsCount - 1"
-                    :title="'下移'"
-                    @click="moveSortRow(index, 1)"
-                  >
-                    <ArrowDown :size="14" />
-                  </button>
+            <div v-if="topRows.length" class="category-sort-list">
+              <template v-for="(parent, pIndex) in topRows" :key="parent.id">
+                <div class="category-sort-row" :class="{ 'has-children': childrenOf(parent.id).length }">
+                  <Folder :size="15" />
+                  <span class="category-sort-name">{{ parent.name }}</span>
+                  <div class="category-sort-actions">
+                    <button
+                      v-if="parent.id !== 'common'"
+                      :title="'添加二级分类'"
+                      @click="openAddChild(parent)"
+                    >
+                      <FolderPlus :size="14" />
+                    </button>
+                    <button :title="'编辑'" @click="openEditCategory(parent)">
+                      <Pencil :size="14" />
+                    </button>
+                    <button
+                      v-if="parent.id !== 'common'"
+                      :title="'删除'"
+                      class="danger"
+                      @click="confirmRemoveCategory(parent)"
+                    >
+                      <Trash2 :size="14" />
+                    </button>
+                    <button
+                      :disabled="pIndex === 0"
+                      :title="'上移'"
+                      @click="moveRow(null, pIndex, -1)"
+                    >
+                      <ArrowUp :size="14" />
+                    </button>
+                    <button
+                      :disabled="pIndex === topRows.length - 1"
+                      :title="'下移'"
+                      @click="moveRow(null, pIndex, 1)"
+                    >
+                      <ArrowDown :size="14" />
+                    </button>
+                  </div>
                 </div>
-              </div>
+                <div
+                  v-for="(child, cIndex) in childrenOf(parent.id)"
+                  :key="child.id"
+                  class="category-sort-row is-child"
+                >
+                  <span class="child-branch"><Folder :size="15" /></span>
+                  <span class="category-sort-name">{{ child.name }}</span>
+                  <div class="category-sort-actions">
+                    <button :title="'编辑'" @click="openEditCategory(child)">
+                      <Pencil :size="14" />
+                    </button>
+                    <button
+                      v-if="child.id !== 'common'"
+                      :title="'删除'"
+                      class="danger"
+                      @click="confirmRemoveCategory(child)"
+                    >
+                      <Trash2 :size="14" />
+                    </button>
+                    <button
+                      :disabled="cIndex === 0"
+                      :title="'上移'"
+                      @click="moveRow(parent.id, cIndex, -1)"
+                    >
+                      <ArrowUp :size="14" />
+                    </button>
+                    <button
+                      :disabled="cIndex === childrenOf(parent.id).length - 1"
+                      :title="'下移'"
+                      @click="moveRow(parent.id, cIndex, 1)"
+                    >
+                      <ArrowDown :size="14" />
+                    </button>
+                  </div>
+                </div>
+              </template>
             </div>
           </section>
 
@@ -669,6 +708,54 @@ function moveSortRow(index: number, offset: number) {
           <Save :size="16" />{{ saving ? '保存中…' : '保存设置' }}
         </button>
       </footer>
+    </div>
+  </div>
+
+  <div
+    v-if="categoryModalOpen"
+    class="settings-backdrop category-modal-wrap"
+    @click.self="closeCategoryForm"
+  >
+    <div class="category-modal" role="dialog" aria-modal="true">
+      <div class="category-modal-header">
+        <h3><Folder :size="18" />{{ categoryModal.id ? '编辑分类' : '新建分类' }}</h3>
+        <button class="settings-close" type="button" @click="closeCategoryForm"><X /></button>
+      </div>
+      <form @submit.prevent="submitCategoryForm">
+        <label
+          >分类名称
+          <input
+            v-model="categoryModal.name"
+            type="text"
+            required
+            maxlength="40"
+            placeholder="例如：开发工具"
+            autofocus
+          />
+        </label>
+        <label>
+          上级分类
+          <select v-model="categoryModal.parentId">
+            <option value="">一级分类（默认，顶层）</option>
+            <option
+              v-for="parent in parentCategoryOptions.filter(item => item.id !== categoryModal.id)"
+              :key="parent.id"
+              :value="parent.id"
+            >
+              二级分类 · {{ parent.name }}
+            </option>
+          </select>
+        </label>
+        <p class="modal-help">默认新建为一级分类；选择上级分类后即为二级，支持两级分类。</p>
+        <div class="category-form-actions">
+          <button type="button" class="settings-secondary" @click="closeCategoryForm">
+            取消
+          </button>
+          <button type="submit" class="settings-primary" :disabled="savingCategory">
+            <Save :size="15" />{{ savingCategory ? '保存中…' : '保存' }}
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 </template>
@@ -972,7 +1059,18 @@ html.dark .settings-secondary {
   color: var(--c-muted);
 }
 .category-sort-row.is-child {
-  margin-left: 20px;
+  margin-left: 26px;
+  background: color-mix(in srgb, var(--c-surface) 70%, transparent);
+  border-style: dashed;
+}
+.category-sort-row.has-children {
+  border-left: 3px solid var(--c-primary);
+}
+.category-sort-row .child-branch {
+  color: var(--c-faint);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
 }
 .category-sort-row > svg {
   color: var(--c-primary);
@@ -1030,6 +1128,65 @@ html.dark .settings-secondary {
   justify-content: flex-end;
   gap: 9px;
   margin-top: 14px;
+}
+/* ===== 分类新建/编辑弹窗 ===== */
+.category-modal-wrap {
+  z-index: 60;
+}
+.category-modal {
+  width: min(92vw, 420px);
+  max-height: 85vh;
+  overflow: auto;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(18, 27, 42, 0.25);
+  padding: 22px;
+}
+.category-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.category-modal-header h3 {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  color: var(--c-text);
+}
+.category-modal form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 13px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-muted);
+}
+.category-modal form input,
+.category-modal form select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 9px;
+  background: var(--c-input-bg);
+  color: var(--c-text);
+  font-size: 14px;
+  outline: none;
+}
+.category-modal form input:focus,
+.category-modal form select:focus {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px rgba(89, 124, 226, 0.15);
+}
+.category-modal .modal-help {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--c-faint);
+  line-height: 1.6;
 }
 /* ===== WebDAV 备份列表 ===== */
 .backup-list {

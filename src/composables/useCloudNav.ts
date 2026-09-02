@@ -59,12 +59,15 @@ export function useCloudNav() {
     if (!nextCategories.some(item => item.id === 'common')) {
       nextCategories.unshift({ id: 'common', name: '常用推荐', icon: 'Star' })
     }
-    const categoryIds = new Set(nextCategories.map(item => item.id))
+    const byId = new Map(nextCategories.map(item => [item.id, item]))
     for (const category of nextCategories) {
+      const parent = category.parentId ? byId.get(category.parentId) : undefined
       if (
         !category.parentId ||
         category.parentId === category.id ||
-        !categoryIds.has(category.parentId)
+        !parent ||
+        // 只允许两级：父级本身必须是一级分类，避免把顶层误判为二级
+        parent.parentId
       ) {
         delete category.parentId
         category.isSubcategory = false
