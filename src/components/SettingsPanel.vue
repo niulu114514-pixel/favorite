@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import {
+  ArrowDown,
+  ArrowUp,
   Check,
   Cloud,
   Copy,
   ExternalLink,
+  Folder,
   KeyRound,
   Palette,
   Save,
@@ -12,7 +15,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-vue-next'
-import type { AIConfig, IconConfig, WebDavConfig } from '../../types'
+import type { AIConfig, Category, IconConfig, WebDavConfig } from '../../types'
 import { DEFAULT_ICON_CONFIG } from '../services/iconService'
 import { generateLinkDescription } from '../services/aiService'
 
@@ -30,7 +33,9 @@ const props = defineProps<{
   open: boolean
   config: SettingsDraft
   token: string
+  categories: Category[]
   saveConfigBatch: (configs: Record<string, unknown>) => Promise<void>
+  reorderCategories: (orderedIds: string[]) => Promise<void>
 }>()
 const emit = defineEmits<{ close: []; saved: [settings: SettingsDraft] }>()
 const draft = reactive<SettingsDraft>(createDraft(props.config))
@@ -45,6 +50,7 @@ const settingsContent = ref<HTMLElement>()
 const activeSection = ref('appearance')
 const settingsTabs = [
   { id: 'appearance', label: '外观与视图', icon: Palette },
+  { id: 'categories', label: '分类排序', icon: Folder },
   { id: 'icons', label: '图标获取', icon: ExternalLink },
   { id: 'ai', label: 'AI 助手', icon: Sparkles },
   { id: 'mcp', label: 'MCP 客户端', icon: KeyRound },
@@ -153,10 +159,17 @@ async function copyMcp(value: string) {
 
 function scrollToSection(id: string) {
   activeSection.value = id
-  settingsContent.value?.querySelector(`#settings-${id}`)?.scrollIntoView({
-    behavior: 'auto',
-    block: 'start',
-  })
+  settingsContent.value?.scrollTo({ top: 0 })
+}
+
+/** 分类排序：将 index 处分类移动到 offset 位置 */
+function moveCategory(index: number, offset: number) {
+  const next = [...props.categories]
+  const to = index + offset
+  if (index < 0 || to < 0 || to >= next.length) return
+  const [moved] = next.splice(index, 1)
+  next.splice(to, 0, moved)
+  void props.reorderCategories(next.map(item => item.id))
 }
 </script>
 
@@ -186,7 +199,11 @@ function scrollToSection(id: string) {
           <div class="settings-nav-tip">修改后点击底部“保存设置”同步到云端</div>
         </aside>
         <div ref="settingsContent" class="settings-content">
-          <section id="settings-appearance" class="settings-section settings-card">
+          <section
+            id="settings-appearance"
+            v-if="activeSection === 'appearance'"
+            class="settings-section settings-card"
+          >
             <h3><Palette :size="17" /> 网站外观</h3>
             <div class="settings-grid">
               <label
@@ -207,7 +224,49 @@ function scrollToSection(id: string) {
             </div>
           </section>
 
-          <section id="settings-icons" class="settings-section settings-card">
+          <section
+            id="settings-categories"
+            v-if="activeSection === 'categories'"
+            class="settings-section settings-card"
+          >
+            <h3><Folder :size="17" /> 分类排序</h3>
+            <p class="settings-help">
+              上下移动调整分类在侧栏与首页的显示顺序，保存后立即同步到云端。
+            </p>
+            <div v-if="props.categories.length" class="category-sort-list">
+              <div
+                v-for="(category, index) in props.categories"
+                :key="category.id"
+                class="category-sort-row"
+                :class="{ 'is-child': Boolean(category.parentId) }"
+              >
+                <Folder :size="15" />
+                <span class="category-sort-name">{{ category.name }}</span>
+                <div class="category-sort-actions">
+                  <button
+                    :disabled="index === 0"
+                    :title="'上移'"
+                    @click="moveCategory(index, -1)"
+                  >
+                    <ArrowUp :size="14" />
+                  </button>
+                  <button
+                    :disabled="index === props.categories.length - 1"
+                    :title="'下移'"
+                    @click="moveCategory(index, 1)"
+                  >
+                    <ArrowDown :size="14" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section
+            id="settings-icons"
+            v-if="activeSection === 'icons'"
+            class="settings-section settings-card"
+          >
             <h3><ExternalLink :size="17" /> 图标自动获取</h3>
             <p class="settings-help">
               新增网站时自动生成图标；启用边缘缓存后由 `/api/favicon` 抓取并缓存到 EdgeOne Pages
@@ -236,7 +295,11 @@ function scrollToSection(id: string) {
             /></label>
           </section>
 
-          <section id="settings-ai" class="settings-section settings-card">
+          <section
+            id="settings-ai"
+            v-if="activeSection === 'ai'"
+            class="settings-section settings-card"
+          >
             <h3><Sparkles :size="17" /> AI 功能</h3>
             <p class="settings-help">
               在添加网站时自动生成中文描述，也可根据分类列表给出分类建议。API Key 仅保存在你的 KV
@@ -265,7 +328,11 @@ function scrollToSection(id: string) {
             </div>
           </section>
 
-          <section id="settings-webdav" class="settings-section settings-card">
+          <section
+            id="settings-webdav"
+            v-if="activeSection === 'webdav'"
+            class="settings-section settings-card"
+          >
             <h3><Cloud :size="17" /> WebDAV 备份</h3>
             <p class="settings-help">
               可连接 Nextcloud、坚果云或 NAS 的 WebDAV 目录。CloudNav 会在服务端保存
@@ -311,7 +378,11 @@ function scrollToSection(id: string) {
             </div>
           </section>
 
-          <section id="settings-mcp" class="settings-section settings-card">
+          <section
+            id="settings-mcp"
+            v-if="activeSection === 'mcp'"
+            class="settings-section settings-card"
+          >
             <h3><KeyRound :size="17" /> MCP / EdgeOne 部署</h3>
             <p class="settings-help">
               仓库根目录的 `.mcp.json` 已配置 EdgeOne Pages Deploy MCP，可在支持 MCP
@@ -638,6 +709,61 @@ html.dark .settings-secondary {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* ===== 分类排序 ===== */
+.category-sort-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.category-sort-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--c-border);
+  border-radius: 11px;
+  background: var(--c-surface);
+  color: var(--c-muted);
+}
+.category-sort-row.is-child {
+  margin-left: 20px;
+}
+.category-sort-row > svg {
+  color: var(--c-primary);
+  flex: 0 0 auto;
+}
+.category-sort-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--c-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.category-sort-actions {
+  display: flex;
+  gap: 4px;
+}
+.category-sort-actions button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--c-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.category-sort-actions button:hover:not(:disabled) {
+  background: rgba(89, 124, 226, 0.14);
+  color: var(--c-primary);
+}
+.category-sort-actions button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 .settings-result.error,
 .settings-error {

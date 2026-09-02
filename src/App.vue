@@ -43,11 +43,12 @@ const linkModalOpen = ref(false)
 const authModalOpen = ref(false)
 const categoryModalOpen = ref(false)
 const settingsOpen = ref(false)
-const hideWebsites = ref(localStorage.getItem('cloudnav_hide_websites') === '1')
 const editingLink = ref<Partial<LinkItem>>({})
 const editingCategory = ref<Partial<Category>>({})
 const password = ref('')
 const authError = ref('')
+const showPassword = ref(false)
+const loggingIn = ref(false)
 const aiBusy = ref(false)
 const aiError = ref('')
 const searchInput = ref<HTMLInputElement>()
@@ -144,8 +145,10 @@ function handleCategoryClick(event: MouseEvent, category: Category) {
 
 const visibleLinks = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
-  if (!query || externalSearch.value) return nav.links.value
-  return nav.links.value.filter(link => searchableText(link).includes(query))
+  if (!query || externalSearch.value) return nav.links.value.filter(link => !link.hidden)
+  return nav.links.value
+    .filter(link => !link.hidden)
+    .filter(link => searchableText(link).includes(query))
 })
 
 function searchableText(link: LinkItem) {
@@ -199,11 +202,6 @@ function toggleTheme() {
 function toggleView() {
   compact.value = !compact.value
   localStorage.setItem('cloudnav_view_mode', compact.value ? 'compact' : 'detailed')
-}
-
-function toggleHideWebsites() {
-  hideWebsites.value = !hideWebsites.value
-  localStorage.setItem('cloudnav_hide_websites', hideWebsites.value ? '1' : '0')
 }
 
 // 登录凭据过期（401）时自动弹出登录框，替代静默的“保存失败”。
@@ -410,7 +408,9 @@ async function deleteCategory(category: Category) {
 }
 
 async function submitLogin() {
+  if (loggingIn.value) return
   authError.value = ''
+  loggingIn.value = true
   try {
     if (await nav.login(password.value)) {
       authModalOpen.value = false
@@ -418,6 +418,8 @@ async function submitLogin() {
     } else authError.value = '密码不正确'
   } catch {
     authError.value = '暂时无法登录，请稍后重试'
+  } finally {
+    loggingIn.value = false
   }
 }
 
@@ -610,14 +612,6 @@ onBeforeUnmount(() => {
           >
           <button
             class="icon-button"
-            :title="hideWebsites ? '显示网站卡片' : '隐藏网站卡片'"
-            :aria-pressed="hideWebsites"
-            @click="toggleHideWebsites"
-          >
-            <EyeOff v-if="hideWebsites" /><Eye v-else />
-          </button>
-          <button
-            class="icon-button"
             :title="compact ? '详细视图' : '紧凑视图'"
             @click="toggleView"
           >
@@ -652,8 +646,7 @@ onBeforeUnmount(() => {
             v-if="
               nav.config.showPinned &&
               nav.pinnedLinks.value.length &&
-              !searchQuery &&
-              !hideWebsites
+              !searchQuery
             "
             class="category-section pinned-section"
           >
@@ -735,17 +728,18 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <LinkGrid
-                v-if="categoryLinks(category.id).length && !hideWebsites"
+                v-if="categoryLinks(category.id).length"
                 :links="categoryLinks(category.id)"
                 :compact="compact"
                 :can-manage="Boolean(nav.token.value)"
                 @pin="nav.togglePin"
                 @edit="openLinkModal"
                 @delete="deleteLink"
+                @hide="nav.toggleLinkHidden"
                 @reorder="orderedIds => nav.reorderLinks(category.id, orderedIds)"
               />
               <button
-                v-else-if="!hideWebsites && nav.token.value"
+                v-else-if="nav.token.value"
                 class="empty-state"
                 @click="openLinkModalForCategory(category.id)"
               >
@@ -820,24 +814,40 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="authModalOpen" class="modal-backdrop" @click.self="authModalOpen = false">
-      <form class="modal small-modal" @submit.prevent="submitLogin">
-        <div class="modal-title">
-          <div>
-            <h2>管理登录</h2>
-            <p>登录后可编辑分类和网站。</p>
+      <form class="login-card" @submit.prevent="submitLogin">
+        <button type="button" class="login-close" aria-label="关闭" @click="authModalOpen = false">
+          <X />
+        </button>
+        <div class="login-badge"><LogIn :size="22" /></div>
+        <h2 class="login-title">管理登录</h2>
+        <p class="login-sub">输入管理密码以编辑分类、网站与设置</p>
+        <label class="login-field">
+          <span>管理密码</span>
+          <div class="login-input">
+            <input
+              v-model="password"
+              :type="showPassword ? 'text' : 'password'"
+              required
+              autofocus
+              autocomplete="current-password"
+              placeholder="请输入管理密码"
+            />
+            <button
+              type="button"
+              class="login-eye"
+              :title="showPassword ? '隐藏密码' : '显示密码'"
+              @click="showPassword = !showPassword"
+            >
+              <Eye v-if="!showPassword" :size="18" /><EyeOff v-else :size="18" />
+            </button>
           </div>
-          <button type="button" class="icon-button" @click="authModalOpen = false"><X /></button>
-        </div>
-        <label
-          >管理密码<input
-            v-model="password"
-            type="password"
-            required
-            autofocus
-            autocomplete="current-password"
-        /></label>
-        <p v-if="authError" class="form-error">{{ authError }}</p>
-        <button class="primary-button full-button"><LogIn :size="17" />登录</button>
+        </label>
+        <transition name="fade">
+          <p v-if="authError" class="form-error login-error">{{ authError }}</p>
+        </transition>
+        <button class="primary-button full-button" :disabled="loggingIn" type="submit">
+          <LogIn :size="17" />{{ loggingIn ? '登录中…' : '登录' }}
+        </button>
       </form>
     </div>
 
@@ -893,7 +903,9 @@ onBeforeUnmount(() => {
         defaultViewMode: nav.config.defaultViewMode,
       }"
       :token="nav.token.value"
+      :categories="orderedCategories"
       :save-config-batch="nav.saveConfigBatch"
+      :reorder-categories="nav.reorderCategories"
       @close="settingsOpen = false"
       @saved="onSettingsSaved"
     />
@@ -1275,6 +1287,10 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: clamp(12px, 1.4vw, 18px);
 }
+/* 网格项最小宽度归零，避免内容撑开卡片导致异常拉长 */
+.link-grid > * {
+  min-width: 0;
+}
 .link-grid.compact {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
   gap: 10px;
@@ -1498,6 +1514,133 @@ onBeforeUnmount(() => {
 .full-button {
   width: 100%;
   margin-top: 12px;
+}
+/* ===== 登录卡片 ===== */
+.login-card {
+  position: relative;
+  width: min(380px, 100%);
+  background: #fff;
+  border-radius: 20px;
+  padding: 30px 26px 26px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.28);
+  text-align: center;
+}
+html.dark .login-card {
+  background: #202833;
+  border: 1px solid #343d49;
+}
+.login-close {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #8490a1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.login-close:hover {
+  background: rgba(120, 130, 150, 0.12);
+  color: #315ed5;
+}
+.login-badge {
+  width: 54px;
+  height: 54px;
+  margin: 2px auto 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #4f7cff, #7758ee);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 10px 24px rgba(79, 124, 255, 0.34);
+}
+.login-title {
+  margin: 0 0 6px;
+  font-size: 21px;
+  color: #182230;
+}
+html.dark .login-title {
+  color: #dce4ef;
+}
+.login-sub {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: #8692a3;
+}
+.login-field {
+  display: block;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 650;
+  color: #4d596a;
+}
+html.dark .login-field {
+  color: #c3ccd8;
+}
+.login-field span {
+  display: block;
+  margin-bottom: 7px;
+}
+.login-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.login-input input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 46px;
+  padding: 0 44px 0 13px;
+  border: 1px solid #dce1e8;
+  border-radius: 11px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  outline: 0;
+}
+.login-input input:focus {
+  border-color: #6284e8;
+  box-shadow: 0 0 0 3px rgba(78, 119, 231, 0.12);
+}
+html.dark .login-input input {
+  background: #171d25;
+  border-color: #414a57;
+  color: #dbe1e8;
+}
+.login-eye {
+  position: absolute;
+  right: 6px;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  color: #8a95a7;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.login-eye:hover {
+  color: #315ed5;
+}
+.login-error {
+  margin: 12px 0 0;
+}
+html.dark .login-card .primary-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 .sidebar-mask,
 .mobile-only {

@@ -261,6 +261,14 @@ export function useCloudNav() {
     await persist()
   }
 
+  /** 管理员切换单个卡片的隐藏状态（隐藏后对普通访客不可见） */
+  async function toggleLinkHidden(id: string) {
+    links.value = links.value.map(item =>
+      item.id === id ? { ...item, hidden: !item.hidden } : item
+    )
+    await persist()
+  }
+
   async function saveCategory(category: Partial<Category>) {
     const parentId =
       category.parentId &&
@@ -347,7 +355,7 @@ export function useCloudNav() {
     }
   }
 
-  const pinnedLinks = computed(() => links.value.filter(item => item.pinned))
+  const pinnedLinks = computed(() => links.value.filter(item => item.pinned && !item.hidden))
 
   return {
     links,
@@ -365,6 +373,7 @@ export function useCloudNav() {
     saveLink,
     removeLink,
     togglePin,
+    toggleLinkHidden,
     saveCategory,
     reorderCategories,
     reorderLinks,

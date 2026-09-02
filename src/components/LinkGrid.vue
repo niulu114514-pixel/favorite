@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ArrowDown, ArrowUp, GripVertical, Pencil, Pin, Trash2 } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, EyeOff, GripVertical, Pencil, Pin, Trash2 } from 'lucide-vue-next'
 import type { LinkItem } from '../../types'
 import { favicon, handleFaviconError } from '../composables/useFavicon'
 import { safeTargetUrl } from '../utils/url'
@@ -15,6 +15,7 @@ const emit = defineEmits<{
   pin: [id: string]
   edit: [link: LinkItem]
   delete: [link: LinkItem]
+  hide: [id: string]
   reorder: [orderedIds: string[]]
 }>()
 
@@ -105,6 +106,9 @@ function dropOn(overIdValue: string) {
         <button :title="link.pinned ? '取消置顶' : '置顶'" @click="emit('pin', link.id)">
           <Pin :size="14" :fill="link.pinned ? 'currentColor' : 'none'" />
         </button>
+        <button :title="link.hidden ? '取消隐藏（管理员可见）' : '隐藏（仅管理员）'" @click="emit('hide', link.id)">
+          <EyeOff :size="14" :fill="link.hidden ? 'currentColor' : 'none'" />
+        </button>
         <button :title="'编辑'" @click="emit('edit', link)"><Pencil :size="14" /></button>
         <button :title="'删除'" @click="emit('delete', link)"><Trash2 :size="14" /></button>
       </div>
@@ -118,6 +122,12 @@ function dropOn(overIdValue: string) {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--card-min)), 1fr));
   gap: clamp(12px, 1.4vw, 20px);
   --card-min: 320px;
+}
+/* 防止网格项/卡片被内容撑开而异常拉长 */
+.link-grid > *,
+.link-card-wrap,
+.link-card {
+  min-width: 0;
 }
 .link-grid.compact {
   --card-min: 236px;
@@ -304,5 +314,32 @@ function dropOn(overIdValue: string) {
     width: 25px;
     height: 25px;
   }
+}
+
+/* ===== 暗色模式（组件内作用域，避免被全局样式漏掉）===== */
+html.dark .link-card {
+  background: #222933;
+  border-color: #343d49;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+html.dark .link-card:hover {
+  border-color: #4a5766;
+}
+html.dark .link-card img {
+  background: #1a2028;
+}
+html.dark .link-card p {
+  color: #9ba7b7;
+}
+html.dark .card-actions {
+  background: #222933;
+  border-color: #343d49;
+}
+html.dark .card-actions button {
+  color: #9aa6b6;
+}
+html.dark .card-actions button:hover {
+  background: #2c394b;
+  color: #c9d8ff;
 }
 </style>
