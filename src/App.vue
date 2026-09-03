@@ -606,7 +606,13 @@ onBeforeUnmount(() => {
       <div class="brand">
         <div class="brand-mark"><Bookmark :size="20" /></div>
         <strong>{{ nav.config.navigationName }}</strong
-        ><button class="icon-button mobile-only" @click="sidebarOpen = false"><X /></button>
+        ><button class="icon-button mobile-only" @click="sidebarOpen = false"><X /></button
+        ><button
+          class="icon-button desktop-only sidebar-collapse-toggle"
+          :aria-label="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
+          :aria-pressed="!sidebarCollapsed"
+          @click="toggleSidebar"
+        ><PanelLeft :size="15" /></button>
       </div>
       <nav class="category-nav">
         <div class="category-section-label">分类目录</div>
@@ -635,6 +641,7 @@ onBeforeUnmount(() => {
               @click="handleCategoryClick($event, category)"
             >
               <Folder :size="17" /><span class="category-name">{{ category.name }}</span
+              ><span class="category-count">{{ categoryCount(category) }}</span
               ><span
                 v-if="categoryChildren(category.id).length"
                 class="category-toggle"
@@ -674,6 +681,7 @@ onBeforeUnmount(() => {
                 @click="jumpTo(child.id)"
               >
                 <Folder :size="16" /><span>{{ child.name }}</span
+                ><span class="category-count">{{ categoryCount(child) }}</span
                 ><ChevronRight :size="15" />
               </button>
             </div>
@@ -1284,6 +1292,24 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   -webkit-text-fill-color: transparent;
   color: transparent;
 }
+.sidebar-collapse-toggle {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  border-radius: 8px;
+  background: transparent;
+  border-color: transparent;
+  color: #5f6c81;
+}
+.sidebar-collapse-toggle svg {
+  width: 15px;
+  height: 15px;
+}
+.sidebar-collapse-toggle:hover {
+  background: rgba(79, 124, 255, 0.12);
+  color: #315ed5;
+}
 .category-nav {
   padding: 12px 10px;
   overflow: auto;
@@ -1350,6 +1376,26 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.category-nav button .category-count {
+  flex: 0 0 auto;
+  margin-left: auto;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: rgba(120, 130, 150, 0.16);
+  color: #677389;
+  font-size: 11px;
+  font-weight: 650;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  box-sizing: border-box;
+}
+.category-nav button.active .category-count {
+  background: rgba(91, 75, 255, 0.16);
+  color: #5b4bff;
 }
 .category-nav button.subcategory {
   margin-left: 14px;
@@ -2045,21 +2091,86 @@ html.dark .login-card .primary-button:disabled {
   .desktop-only {
     display: grid;
   }
-  /* 侧栏收起状态 */
+  /* 侧栏收起态：窄图标栏，鼠标悬停自动临时展开 */
   .sidebar {
-    transition:
-      transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-      width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .sidebar.collapsed {
-    transform: translateX(-250px);
-    width: 0;
+    transform: none;
+    width: 78px;
+  }
+  .sidebar.collapsed:hover {
+    width: 250px;
+  }
+  /* 收起态：仅保留图标，隐藏文字/徽标/小节标签/子项/底部 */
+  .sidebar.collapsed .brand strong,
+  .sidebar.collapsed .category-section-label,
+  .sidebar.collapsed .category-name,
+  .sidebar.collapsed .category-count,
+  .sidebar.collapsed .category-toggle,
+  .sidebar.collapsed .sidebar-footer {
+    display: none;
+  }
+  .sidebar.collapsed .category-nav button.subcategory {
+    display: none;
+  }
+  .sidebar.collapsed .brand {
+    padding: 0 10px;
+    gap: 0;
+  }
+  .sidebar.collapsed .category-nav {
+    padding: 12px 9px;
+  }
+  .sidebar.collapsed .category-nav button {
+    padding: 10px 0;
+    justify-content: center;
+  }
+  .sidebar.collapsed .sidebar-collapse-toggle {
+    width: 24px;
+    height: 24px;
+  }
+  /* 悬停展开后恢复文字与排布 */
+  .sidebar.collapsed:hover .brand {
+    padding: 0 20px;
+    gap: 11px;
+  }
+  .sidebar.collapsed:hover .brand strong {
+    display: inline;
+  }
+  .sidebar.collapsed:hover .sidebar-collapse-toggle {
+    width: 30px;
+    height: 30px;
+  }
+  .sidebar.collapsed:hover .category-nav {
+    padding: 12px 10px;
+  }
+  .sidebar.collapsed:hover .category-nav button {
+    padding: 10px 12px;
+    justify-content: flex-start;
+  }
+  .sidebar.collapsed:hover .category-section-label {
+    display: block;
+  }
+  .sidebar.collapsed:hover .category-name {
+    display: block;
+  }
+  .sidebar.collapsed:hover .category-count {
+    display: grid;
+  }
+  .sidebar.collapsed:hover .category-toggle {
+    display: grid;
+  }
+  .sidebar.collapsed:hover .category-nav button.subcategory {
+    display: flex;
+  }
+  .sidebar.collapsed:hover .sidebar-footer {
+    display: block;
   }
   .main-area {
     transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .main-area.sidebar-collapsed {
-    margin-left: 0;
+    margin-left: 78px;
   }
   .sidebar-toggle {
     flex: 0 0 auto;
@@ -2147,6 +2258,18 @@ html.dark .category-nav button.active {
   border-color: rgba(145, 171, 246, 0.4);
   color: #d8e3ff;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+}
+html.dark .category-nav button .category-count {
+  background: rgba(200, 210, 226, 0.12);
+  color: #a9b4c4;
+}
+html.dark .category-nav button.active .category-count {
+  background: rgba(145, 171, 246, 0.24);
+  color: #d8e3ff;
+}
+html.dark .sidebar-collapse-toggle:hover {
+  background: rgba(115, 145, 224, 0.2);
+  color: #c9d8ff;
 }
 html.dark .brand,
 html.dark .sidebar-footer {
