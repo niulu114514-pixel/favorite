@@ -1419,21 +1419,25 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
 }
 .category-nav button:hover,
 .sidebar-footer button:hover {
-  background: rgba(255, 255, 255, 0.5);
-  border-color: rgba(255, 255, 255, 0.72);
+  background: linear-gradient(
+    120deg,
+    rgba(124, 110, 255, 0.08),
+    rgba(214, 96, 234, 0.05)
+  );
+  border-color: rgba(122, 102, 255, 0.2);
   color: #315ed5;
-  box-shadow: 0 5px 15px rgba(63, 84, 133, 0.08);
+  box-shadow: none;
   transform: translateX(2px);
 }
 .category-nav button.active {
   background: linear-gradient(
     120deg,
-    rgba(124, 110, 255, 0.2),
-    rgba(214, 96, 234, 0.14)
+    rgba(124, 110, 255, 0.12),
+    rgba(214, 96, 234, 0.07)
   );
-  border-color: rgba(122, 102, 255, 0.4);
+  border-color: rgba(122, 102, 255, 0.3);
   color: #5b4bff;
-  box-shadow: 0 6px 18px rgba(80, 70, 180, 0.12);
+  box-shadow: none;
 }
 .category-nav button > span.category-name {
   flex: 1 1 auto;
@@ -1725,6 +1729,9 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   line-height: 1;
   font-size: 17px;
   min-width: 17px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 .section-title .emoji-icon {
   font-size: 20px;
