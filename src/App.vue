@@ -543,7 +543,7 @@ onBeforeUnmount(() => {
               @pointercancel="cancelCategoryPress"
               @click="handleCategoryClick($event, category)"
             >
-              <Folder :size="17" /><span>{{ category.name }}</span
+              <Folder :size="17" /><span class="category-name">{{ category.name }}</span
               ><span
                 v-if="categoryChildren(category.id).length"
                 class="category-toggle"
@@ -1027,7 +1027,7 @@ onBeforeUnmount(() => {
   align-items: stretch;
 }
 .category-nav-item > button:first-child {
-  width: auto;
+  width: 100%;
   min-width: 0;
 }
 .category-nav button,
@@ -1064,8 +1064,9 @@ onBeforeUnmount(() => {
   color: #315ed5;
   box-shadow: 0 6px 18px rgba(63, 84, 133, 0.12);
 }
-.category-nav button span {
-  flex: 1;
+.category-nav button > span.category-name {
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
