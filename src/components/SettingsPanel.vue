@@ -88,6 +88,7 @@ import type {
 import { DEFAULT_BACKGROUND_CONFIG } from '../../types'
 import { DEFAULT_ICON_CONFIG } from '../services/iconService'
 import { generateLinkDescription } from '../services/aiService'
+import { isEmojiIcon, splitCategoryIcon } from '../services/categoryIconUtil'
 
 type SettingsDraft = {
   ai: AIConfig
@@ -402,6 +403,38 @@ const categoryIconOptions: { name: string; icon: Component }[] = [
   { name: 'Gift', icon: Gift },
 ]
 
+/** 常用 emoji 图标选项：既可从面板点选，也可在分类名称前直接输入 emoji 作为图标 */
+const emojiIconOptions = [
+  '⭐',
+  '🔥',
+  '🚀',
+  '📁',
+  '📚',
+  '💡',
+  '❤️',
+  '🎯',
+  '🛠️',
+  '🧰',
+  '🗂️',
+  '📝',
+  '🎨',
+  '🎮',
+  '🎬',
+  '📰',
+  '💰',
+  '🛒',
+  '☁️',
+  '🖥️',
+  '📱',
+  '🔗',
+  '⚙️',
+  '🌐',
+  '✉️',
+  '👥',
+  '🏠',
+  '🗺️',
+]
+
 const categoryIconByName = new Map(categoryIconOptions.map(option => [option.name, option.icon]))
 function categoryIcon(name?: string): Component {
   return categoryIconByName.get(name || 'Folder') || Folder
@@ -692,7 +725,10 @@ function formatSize(bytes: number) {
             <div v-if="topRows.length" class="category-sort-list">
               <template v-for="(parent, pIndex) in topRows" :key="parent.id">
                 <div class="category-sort-row" :class="{ 'has-children': childrenOf(parent.id).length }">
-                  <component :is="categoryIcon(parent.icon)" :size="15" />
+                  <template v-if="isEmojiIcon(parent.icon)">
+                    <span class="emoji-icon">{{ parent.icon }}</span>
+                  </template>
+                  <component v-else :is="categoryIcon(parent.icon)" :size="15" />
                   <span class="category-sort-name">{{ parent.name }}</span>
                   <div class="category-sort-actions">
                     <button
@@ -734,9 +770,12 @@ function formatSize(bytes: number) {
                   :key="child.id"
                   class="category-sort-row is-child"
                 >
-                  <span class="child-branch"
-                    ><component :is="categoryIcon(child.icon)" :size="15"
-                  /></span>
+                  <span class="child-branch">
+                    <template v-if="isEmojiIcon(child.icon)">
+                      <span class="emoji-icon">{{ child.icon }}</span>
+                    </template>
+                    <component v-else :is="categoryIcon(child.icon)" :size="15" />
+                  </span>
                   <span class="category-sort-name">{{ child.name }}</span>
                   <div class="category-sort-actions">
                     <button :title="'编辑'" @click="openEditCategory(child)">
@@ -941,6 +980,10 @@ function formatSize(bytes: number) {
               get_category、list_recent_links）无需认证即可访问；写入工具需要携带管理令牌
               （Authorization Bearer），get_config 仅在认证后才返回含密钥的配置。
             </p>
+            <p class="settings-help mcp-server-help">
+              分类图标约定：add_category / update_category 的名称（name）带前导 emoji 时（如
+              “⭐ 常用推荐”）会被自动提取为图标，否则使用 lucide 图标名（如 Folder、Star）。
+            </p>
             <div class="mcp-command">
               <code>{{ mcpEndpoint }}</code
               ><button @click="copyMcp(mcpEndpoint)" :title="copied ? '已复制' : '复制 MCP 地址'">
@@ -1019,6 +1062,7 @@ function formatSize(bytes: number) {
         </label>
         <p class="modal-help">默认新建为一级分类；选择上级分类后即为二级，支持两级分类。</p>
         <div class="category-field-label">图标</div>
+        <p class="modal-help">名称前输入 emoji（如“⭐ 常用推荐”）会自动作为图标；也可在下方选择。</p>
         <div class="category-icon-picker">
           <button
             v-for="option in categoryIconOptions"
@@ -1031,6 +1075,18 @@ function formatSize(bytes: number) {
             @click="categoryModal.icon = option.name"
           >
             <component :is="option.icon" :size="18" />
+          </button>
+          <button
+            v-for="emoji in emojiIconOptions"
+            :key="emoji"
+            type="button"
+            class="category-icon-option emoji"
+            :class="{ active: categoryModal.icon === emoji }"
+            :title="emoji"
+            :aria-pressed="categoryModal.icon === emoji"
+            @click="categoryModal.icon = emoji"
+          >
+            {{ emoji }}
           </button>
         </div>
         <div class="category-form-actions">
@@ -1392,6 +1448,16 @@ html.dark .settings-secondary {
   color: var(--c-primary);
   flex: 0 0 auto;
 }
+.category-sort-row > .emoji-icon {
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+}
+.category-sort-row .child-branch .emoji-icon {
+  font-size: 15px;
+  line-height: 1;
+  display: inline-flex;
+}
 .category-sort-name {
   flex: 1;
   font-size: 13px;
@@ -1476,6 +1542,15 @@ html.dark .settings-secondary {
   background: var(--c-accent, #6a5cff);
   border-color: var(--c-accent, #6a5cff);
   color: #fff;
+}
+.category-icon-option.emoji {
+  font-size: 17px;
+  line-height: 1;
+}
+.category-icon-option.emoji.active {
+  background: transparent;
+  border-color: var(--c-accent, #6a5cff);
+  box-shadow: inset 0 0 0 2px var(--c-accent, #6a5cff);
 }
 @media (max-width: 560px) {
   .category-icon-picker {

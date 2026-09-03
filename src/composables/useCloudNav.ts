@@ -5,6 +5,7 @@ import type { AIConfig, IconConfig, WebDavConfig } from '../../types'
 import { DEFAULT_BACKGROUND_CONFIG } from '../../types'
 import type { BackgroundConfig } from '../../types'
 import { DEFAULT_ICON_CONFIG, getIconUrl } from '../services/iconService'
+import { splitCategoryIcon } from '../services/categoryIconUtil'
 
 const DATA_KEY = 'cloudnav_data_cache'
 const AUTH_KEY = 'cloudnav_auth_token'
@@ -295,7 +296,10 @@ export function useCloudNav() {
       categories.value.some(item => item.id === category.parentId && !item.parentId)
         ? category.parentId
         : undefined
-    const prepared = { ...category, parentId, isSubcategory: Boolean(parentId) }
+    // 支持“⭐ 常用推荐”式命名：前导 emoji 自动作为图标
+    const { icon: emojiIcon, name } = splitCategoryIcon(category.name || '')
+    const icon = emojiIcon || category.icon || 'Folder'
+    const prepared = { ...category, name, icon, parentId, isSubcategory: Boolean(parentId) }
     if (category.id && categories.value.some(item => item.id === category.id)) {
       categories.value = categories.value.map(item =>
         item.id === category.id ? ({ ...item, ...prepared } as Category) : item
@@ -304,7 +308,6 @@ export function useCloudNav() {
       categories.value.push({
         ...prepared,
         id: category.id || crypto.randomUUID(),
-        icon: category.icon || 'Folder',
       } as Category)
     }
     await persist()

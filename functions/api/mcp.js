@@ -198,12 +198,18 @@ const TOOLS = [
   // ---------- Auth write tools: categories ----------
   {
     name: 'add_category',
-    description: 'Create a navigation category. Requires authentication.',
+    description:
+      'Create a navigation category. Requires authentication. ' +
+      'Icon convention: a leading emoji in `name` (e.g. "⭐ 常用推荐") is auto-extracted as the folder icon; ' +
+      'otherwise the lucide `icon` name (e.g. Folder) is used.',
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string' },
-        icon: { type: 'string', description: 'Optional icon name, e.g. Folder.' },
+        name: {
+          type: 'string',
+          description: 'Category name. A leading emoji (e.g. "⭐ 常用推荐") becomes the icon automatically.',
+        },
+        icon: { type: 'string', description: 'Optional lucide icon name, e.g. Folder, Star, Rocket.' },
         parentId: { type: 'string', description: 'Optional parent category id (subcategory).' },
       },
       required: ['name'],
@@ -211,13 +217,15 @@ const TOOLS = [
   },
   {
     name: 'update_category',
-    description: 'Update a category by id (name, icon, parentId). Requires authentication.',
+    description:
+      'Update a category by id (name, icon, parentId). Requires authentication. ' +
+      'Same icon convention as add_category: a leading emoji in `name` becomes the icon.',
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string' },
-        name: { type: 'string' },
-        icon: { type: 'string' },
+        name: { type: 'string', description: 'Category name; a leading emoji becomes the icon.' },
+        icon: { type: 'string', description: 'Optional lucide icon name or a bare emoji.' },
         parentId: { type: 'string', description: 'Use "" to clear the parent.' },
       },
       required: ['id'],
@@ -388,6 +396,17 @@ function sanitizeLinkFields(args) {
 function sanitizeCategory(category) {
   const { password, ...rest } = category;
   return rest;
+}
+
+// 与前端 shareCategoryIcon 方案一致：分类名带前导 emoji 时，把 emoji 提取为图标。
+const EMOJI_RE = /^(\p{Extended_Pictographic})/u;
+function splitCategoryIcon(rawName) {
+  const trimmed = (rawName || '').trim();
+  const match = EMOJI_RE.exec(trimmed);
+  if (match) {
+    return { name: trimmed.slice(match[0].length).trim(), emoji: match[0] };
+  }
+  return { name: trimmed, emoji: null };
 }
 
 function makeId() {
@@ -596,16 +615,17 @@ async function callTool(name, args, kv, authenticated) {
 
   // ---------- Categories ----------
   if (name === 'add_category') {
-    const name = String(args.name || '').trim().slice(0, 200);
-    if (!name) return textResult('name is required.', true);
+    const rawName = String(args.name || '').trim().slice(0, 200);
+    if (!rawName) return textResult('name is required.', true);
+    const { name: cleanName, emoji } = splitCategoryIcon(rawName);
     const parentId =
       args.parentId && categories.some(category => category.id === args.parentId)
         ? args.parentId
         : undefined;
     const category = {
       id: makeId(),
-      name,
-      icon: String(args.icon || 'Folder').slice(0, 100),
+      name: cleanName || '未命名',
+      icon: emoji || String(args.icon || 'Folder').slice(0, 100),
       ...(parentId ? { parentId } : {}),
     };
     categories.push(category);
@@ -617,8 +637,16 @@ async function callTool(name, args, kv, authenticated) {
     const index = categories.findIndex(category => category.id === args.id);
     if (index < 0) return textResult('Category not found.', true);
     const next = { ...categories[index] };
-    if (args.name !== undefined) next.name = String(args.name).trim().slice(0, 200);
-    if (args.icon !== undefined) next.icon = String(args.icon).slice(0, 100);
+    let emojiFromName = false;
+    if (args.name !== undefined) {
+      const { name: cleanName, emoji } = splitCategoryIcon(String(args.name));
+      next.name = cleanName.slice(0, 200);
+      if (emoji) {
+        next.icon = emoji;
+        emojiFromName = true;
+      }
+    }
+    if (args.icon !== undefined && !emojiFromName) next.icon = String(args.icon).slice(0, 100);
     if (args.parentId !== undefined) {
       if (args.parentId === '' || args.parentId === next.id) delete next.parentId;
       else if (categories.some(category => category.id === args.parentId)) next.parentId = args.parentId;

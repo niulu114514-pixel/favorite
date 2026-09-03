@@ -82,6 +82,7 @@ import { useRandomBackground } from './composables/useRandomBackground'
 import SettingsPanel from './components/SettingsPanel.vue'
 import LinkGrid from './components/LinkGrid.vue'
 import { favicon, handleFaviconError } from './composables/useFavicon'
+import { isEmojiIcon } from './services/categoryIconUtil'
 import { safeTargetUrl } from './utils/url'
 import { generateLinkDescription, suggestCategory } from './services/aiService'
 
@@ -721,7 +722,10 @@ onBeforeUnmount(() => {
               @pointercancel="cancelCategoryPress"
               @click="handleCategoryClick($event, category)"
             >
-              <component :is="getCategoryIcon(category.icon)" :size="17" /><span
+              <template v-if="isEmojiIcon(category.icon)">
+                <span class="emoji-icon">{{ category.icon }}</span>
+              </template>
+              <component v-else :is="getCategoryIcon(category.icon)" :size="17" /><span
                 class="category-name"
                 >{{ category.name }}</span
               ><span class="category-count">{{ categoryCount(category) }}</span
@@ -763,7 +767,10 @@ onBeforeUnmount(() => {
                 @pointercancel="cancelCategoryPress"
                 @click="jumpTo(child.id)"
               >
-                <component :is="getCategoryIcon(child.icon)" :size="16" /><span
+                <template v-if="isEmojiIcon(child.icon)">
+                  <span class="emoji-icon">{{ child.icon }}</span>
+                </template>
+                <component v-else :is="getCategoryIcon(child.icon)" :size="16" /><span
                   >{{ child.name }}</span
                 ><span class="category-count">{{ categoryCount(child) }}</span
                 ><ChevronRight :size="15" />
@@ -917,7 +924,10 @@ onBeforeUnmount(() => {
             >
               <div class="section-title">
                 <h2>
-                  <component :is="getCategoryIcon(category.icon)" :size="20" />
+                  <template v-if="isEmojiIcon(category.icon)">
+                    <span class="emoji-icon">{{ category.icon }}</span>
+                  </template>
+                  <component v-else :is="getCategoryIcon(category.icon)" :size="20" />
                   {{ category.name }}
                 </h2>
               </div>
@@ -1707,6 +1717,17 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
 }
 .section-title h2 {
   flex: 1;
+}
+.emoji-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 17px;
+  min-width: 17px;
+}
+.section-title .emoji-icon {
+  font-size: 20px;
 }
 .section-actions {
   display: flex;
