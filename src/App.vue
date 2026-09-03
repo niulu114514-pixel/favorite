@@ -1419,25 +1419,17 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
 }
 .category-nav button:hover,
 .sidebar-footer button:hover {
-  background: linear-gradient(
-    120deg,
-    rgba(124, 110, 255, 0.08),
-    rgba(214, 96, 234, 0.05)
-  );
-  border-color: rgba(122, 102, 255, 0.2);
+  background: rgba(124, 110, 255, 0.05);
+  border-color: rgba(122, 102, 255, 0.18);
   color: #315ed5;
   box-shadow: none;
   transform: translateX(2px);
 }
 .category-nav button.active {
-  background: linear-gradient(
-    120deg,
-    rgba(124, 110, 255, 0.12),
-    rgba(214, 96, 234, 0.07)
-  );
-  border-color: rgba(122, 102, 255, 0.3);
+  background: transparent;
+  border-color: transparent;
   color: #5b4bff;
-  box-shadow: none;
+  box-shadow: inset 3px 0 0 0 var(--scheme-accent, #6a5cff);
 }
 .category-nav button > span.category-name {
   flex: 1 1 auto;
@@ -1729,9 +1721,14 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   line-height: 1;
   font-size: 17px;
   min-width: 17px;
-  background: transparent;
-  border: 0;
-  box-shadow: none;
+  /* 强制透明，不继承任何白底 */
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
 }
 .section-title .emoji-icon {
   font-size: 20px;
