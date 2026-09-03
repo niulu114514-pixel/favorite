@@ -744,12 +744,55 @@ onBeforeUnmount(() => {
                   :class="{ expanded: isCategoryExpanded(category.id) }" /></span
               >
             </button>
-          </div>
-          <template v-for="child in categoryChildren(category.id)" :key="child.id">
-            <div v-if="isCategoryExpanded(category.id)" class="category-nav-item">
+            <div v-if="sidebarCollapsed" class="flyout">
+              <div class="flyout-title">
+                <template v-if="isEmojiIcon(category.icon)">
+                  <span class="emoji-icon">{{ category.icon }}</span>
+                </template>
+                <component
+                  v-else
+                  :is="getCategoryIcon(category.icon)"
+                  :size="14"
+                />
+                <span class="flyout-name">{{ category.name }}</span>
+              </div>
+              <template v-if="categoryChildren(category.id).length">
+                <button
+                  v-for="child in categoryChildren(category.id)"
+                  :key="child.id"
+                  type="button"
+                  class="flyout-item"
+                  :data-sort-category="child.id"
+                  @click="jumpTo(child.id)"
+                >
+                  <template v-if="isEmojiIcon(child.icon)">
+                    <span class="emoji-icon">{{ child.icon }}</span>
+                  </template>
+                  <component v-else :is="getCategoryIcon(child.icon)" :size="14" />
+                  <span>{{ child.name }}</span>
+                  <span class="flyout-count">{{ categoryCount(child) }}</span>
+                </button>
+              </template>
               <button
+                v-else
                 type="button"
-                class="subcategory"
+                class="flyout-item"
+                @click="handleCategoryClick($event, category)"
+              >
+                <span>进入该分类</span>
+              </button>
+            </div>
+          </div>
+          <transition-group name="subcat" tag="div" class="subcat-group">
+            <template v-for="child in categoryChildren(category.id)" :key="child.id">
+              <div
+                v-if="isCategoryExpanded(category.id)"
+                :key="child.id"
+                class="category-nav-item"
+              >
+                <button
+                  type="button"
+                  class="subcategory"
                 :data-sort-category="child.id"
                 :aria-current="activeCategoryId === child.id ? 'location' : undefined"
                 :title="'长按拖动可调整分类顺序'"
@@ -772,11 +815,11 @@ onBeforeUnmount(() => {
                 </template>
                 <component v-else :is="getCategoryIcon(child.icon)" :size="16" /><span
                   >{{ child.name }}</span
-                ><span class="category-count">{{ categoryCount(child) }}</span
-                ><ChevronRight :size="15" />
-              </button>
-            </div>
-          </template>
+                ><span class="category-count">{{ categoryCount(child) }}</span>
+                </button>
+              </div>
+            </template>
+          </transition-group>
         </template>
       </nav>
       <div class="sidebar-footer">
@@ -1513,6 +1556,120 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
 .category-toggle svg.expanded {
   transform: rotate(90deg);
 }
+/* 二级分类列表展开/收起过渡 */
+.subcat-group {
+  display: block;
+}
+.subcat-group .category-nav-item {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+.subcat-enter-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+.subcat-leave-active {
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+.subcat-enter-from,
+.subcat-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.subcat-move {
+  transition: transform 0.18s ease;
+}
+/* 窄栏(收起态)悬浮二级面板 */
+.flyout {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  margin-left: 8px;
+  z-index: 60;
+  display: none;
+  min-width: 176px;
+  max-width: 240px;
+  padding: 6px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: 0 12px 30px rgba(30, 44, 74, 0.16);
+}
+.flyout-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 9px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #39465c;
+  border-bottom: 1px solid rgba(120, 130, 150, 0.14);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.flyout-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.flyout-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: #596579;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.flyout-item:hover {
+  background: rgba(124, 110, 255, 0.1);
+  color: #5b4bff;
+}
+.flyout-item .emoji-icon {
+  font-size: 15px;
+}
+.flyout-count {
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: rgba(120, 130, 150, 0.16);
+  color: #677389;
+  font-size: 10px;
+  display: grid;
+  place-items: center;
+}
+html.dark .flyout {
+  background: rgba(34, 41, 51, 0.94);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+html.dark .flyout-title {
+  color: #d5dbe3;
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+html.dark .flyout-item {
+  color: #c3cad6;
+}
+html.dark .flyout-item:hover {
+  background: rgba(124, 110, 255, 0.16);
+  color: #a5b4ff;
+}
 .sidebar-footer {
   padding: 12px 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.6);
@@ -2164,9 +2321,7 @@ html.dark .login-card .primary-button:disabled {
   .sidebar.collapsed {
     transform: none;
     width: 78px;
-  }
-  .sidebar.collapsed:hover {
-    width: 250px;
+    overflow: visible;
   }
   /* 收起态：仅保留图标，隐藏文字/徽标/小节标签/子项/底部 */
   .sidebar.collapsed .brand strong,
@@ -2186,6 +2341,7 @@ html.dark .login-card .primary-button:disabled {
   }
   .sidebar.collapsed .category-nav {
     padding: 12px 9px;
+    overflow: visible;
   }
   .sidebar.collapsed .category-nav button {
     padding: 10px 0;
@@ -2195,42 +2351,24 @@ html.dark .login-card .primary-button:disabled {
     width: 24px;
     height: 24px;
   }
-  /* 悬停展开后恢复文字与排布 */
-  .sidebar.collapsed:hover .brand {
-    padding: 0 20px;
-    gap: 11px;
+  /* 收起态 hover 一级项：右侧弹出二级悬浮面板，整栏保持 78px 不跳动 */
+  .sidebar.collapsed .category-nav-item {
+    position: relative;
   }
-  .sidebar.collapsed:hover .brand strong {
-    display: inline;
-  }
-  .sidebar.collapsed:hover .sidebar-collapse-toggle {
-    width: 30px;
-    height: 30px;
-  }
-  .sidebar.collapsed:hover .category-nav {
-    padding: 12px 10px;
-  }
-  .sidebar.collapsed:hover .category-nav button {
-    padding: 10px 12px;
-    justify-content: flex-start;
-  }
-  .sidebar.collapsed:hover .category-section-label {
+  .sidebar.collapsed .category-nav-item:hover .flyout,
+  .sidebar.collapsed .category-nav-item:focus-within .flyout {
     display: block;
+    animation: flyoutIn 0.18s ease;
   }
-  .sidebar.collapsed:hover .category-name {
-    display: block;
-  }
-  .sidebar.collapsed:hover .category-count {
-    display: grid;
-  }
-  .sidebar.collapsed:hover .category-toggle {
-    display: grid;
-  }
-  .sidebar.collapsed:hover .category-nav button.subcategory {
-    display: flex;
-  }
-  .sidebar.collapsed:hover .sidebar-footer {
-    display: block;
+  @keyframes flyoutIn {
+    from {
+      opacity: 0;
+      transform: translateX(-6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
   .main-area {
     transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
