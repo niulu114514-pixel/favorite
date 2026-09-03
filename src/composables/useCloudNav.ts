@@ -333,20 +333,60 @@ export function useCloudNav() {
   // MCP / 后端直接建链时 Link 不会带 icon 字段；历史遗留的 emoji 图标也因非 URL 而失效。
   // 数据加载后统一为这些链接回填真实 favicon 地址，使其与通过前端添加快捷方式一致：
   // 图标被持久化，而不再仅仅依赖运行时 /api/favicon 回退。
+  // 同一域名最终得到的是同一个 favicon 地址，按域名记忆避免重复解析；
+  // 用 in-flight Promise 缓存，保证并发时每个域名也只触发一次 getIconUrl。
+  const iconResolveCache = new Map<string, Promise<string | undefined>>()
+  function resolveDomainIcon(linkUrl: string): Promise<string | undefined> {
+    let domain: string
+    try {
+      domain = new URL(/^https?:\/\//i.test(linkUrl) ? linkUrl : `https://${linkUrl}`).hostname
+    } catch {
+      return Promise.resolve(undefined)
+    }
+    if (!domain) return Promise.resolve(undefined)
+    if (!iconResolveCache.has(domain)) {
+      iconResolveCache.set(
+        domain,
+        getIconUrl(linkUrl, config.icon)
+          .then(icon => icon || undefined)
+          .catch(() => undefined)
+      )
+    }
+    return iconResolveCache.get(domain)!
+  }
+
   async function backfillLinkIcons(): Promise<void> {
     if (iconBackfillStarted || !links.value.length) return
     iconBackfillStarted = true
-    let changed = false
-    for (const link of links.value) {
-      if (isValidLinkIcon(link.icon)) continue
-      try {
-        const icon = await getIconUrl(link.url, config.icon)
-        if (icon && icon !== link.icon) {
-          link.icon = icon
-          changed = true
+    const pending = links.value.filter(link => !isValidLinkIcon(link.icon))
+    if (!pending.length) return
+
+    // 有界并发：避免冷缓存期把所有 /api/favicon 一次性压上去，
+    // 同时明显快于严格串行（customapi 等真实网络源场景收益最大）。
+    const CONCURRENCY = 6
+    const resolved: Array<{ link: LinkItem; icon?: string }> = []
+    let cursor = 0
+    async function worker() {
+      while (cursor < pending.length) {
+        const link = pending[cursor++]
+        try {
+          const icon = await resolveDomainIcon(link.url)
+          resolved.push({ link, icon })
+        } catch {
+          resolved.push({ link })
         }
-      } catch {
-        // 获取失败时保留原值，渲染期仍走运行时 favicon 回退。
+      }
+    }
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, pending.length) }, () => worker())
+    )
+
+    // 全部解析完成后一次性批量写入，减少响应式触发与本地缓存序列化次数。
+    let changed = false
+    for (const { link, icon } of resolved) {
+      if (icon && icon !== link.icon) {
+        link.icon = icon
+        changed = true
       }
     }
     if (changed) {
