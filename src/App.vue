@@ -13,6 +13,7 @@ import {
   LogOut,
   Menu,
   Moon,
+  PanelLeft,
   Pencil,
   Plus,
   Search,
@@ -37,6 +38,7 @@ const background = useRandomBackground()
 const searchQuery = ref('')
 const externalSearch = ref(false)
 const sidebarOpen = ref(false)
+const sidebarCollapsed = ref(localStorage.getItem('cloudnav_sidebar_collapsed') === '1')
 const dark = ref(localStorage.getItem('cloudnav_theme_preference') === 'dark')
 const savedViewMode = localStorage.getItem('cloudnav_view_mode')
 const hasSavedViewMode = savedViewMode === 'compact' || savedViewMode === 'detailed'
@@ -203,6 +205,11 @@ function toggleTheme() {
 function toggleView() {
   compact.value = !compact.value
   localStorage.setItem('cloudnav_view_mode', compact.value ? 'compact' : 'detailed')
+}
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  localStorage.setItem('cloudnav_sidebar_collapsed', sidebarCollapsed.value ? '1' : '0')
 }
 
 function toggleHideTools() {
@@ -543,7 +550,7 @@ onBeforeUnmount(() => {
       <div class="bg-overlay" :style="{ background: bgOverlayColor }" />
     </div>
     <div v-if="sidebarOpen" class="sidebar-mask" @click="sidebarOpen = false" />
-    <aside class="sidebar" :class="{ open: sidebarOpen }">
+    <aside class="sidebar" :class="{ open: sidebarOpen, collapsed: sidebarCollapsed }">
       <div class="brand">
         <div class="brand-mark"><Bookmark :size="20" /></div>
         <strong>{{ nav.config.navigationName }}</strong
@@ -626,10 +633,17 @@ onBeforeUnmount(() => {
       </div>
     </aside>
 
-    <main class="main-area">
+    <main class="main-area" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <header class="header">
         <button class="icon-button mobile-only" aria-label="打开菜单" @click="sidebarOpen = true">
           <Menu />
+        </button>
+        <button
+          class="icon-button desktop-only sidebar-toggle"
+          :aria-label="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
+          @click="toggleSidebar"
+        >
+          <PanelLeft :size="20" />
         </button>
         <form class="search-box" @submit.prevent="submitSearch">
           <Search :size="18" />
@@ -1013,9 +1027,9 @@ onBeforeUnmount(() => {
   border-bottom-color: rgba(255, 255, 255, 0.45);
 }
 .app-shell.has-bg .sidebar {
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.68), rgba(246, 249, 255, 0.55));
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.6), rgba(246, 249, 255, 0.48));
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
   border-right-color: rgba(255, 255, 255, 0.4);
 }
 .app-shell.has-bg .brand {
@@ -1049,7 +1063,9 @@ html.dark .app-shell.has-bg .header {
   border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 html.dark .app-shell.has-bg .sidebar {
-  background: linear-gradient(155deg, rgba(32, 40, 51, 0.7), rgba(24, 30, 38, 0.6));
+  background: linear-gradient(155deg, rgba(32, 40, 51, 0.62), rgba(24, 30, 38, 0.52));
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
   border-right-color: rgba(255, 255, 255, 0.08);
 }
 html.dark .app-shell.has-bg .brand {
@@ -1816,6 +1832,40 @@ html.dark .login-card .primary-button:disabled {
 .sidebar-mask,
 .mobile-only {
   display: none;
+}
+.desktop-only {
+  display: none;
+}
+/* 桌面端显示侧栏切换按钮 */
+@media (min-width: 851px) {
+  .desktop-only {
+    display: grid;
+  }
+  /* 侧栏收起状态 */
+  .sidebar {
+    transition:
+      transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+      width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .sidebar.collapsed {
+    transform: translateX(-250px);
+    width: 0;
+  }
+  .main-area {
+    transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .main-area.sidebar-collapsed {
+    margin-left: 0;
+  }
+  .sidebar-toggle {
+    flex: 0 0 auto;
+  }
+  .sidebar-toggle svg {
+    transition: transform 0.2s ease;
+  }
+  .main-area:not(.sidebar-collapsed) .sidebar-toggle svg {
+    transform: none;
+  }
 }
 @keyframes shine {
   to {
