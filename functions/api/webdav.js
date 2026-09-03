@@ -1,53 +1,17 @@
 // WebDAV 代理接口
 // 支持 EdgeOne Pages
 
-import { getCorsHeaders, getKV, jsonResponse, verifyAuth } from './_kvAdapter.js'
+import {
+  getCorsHeaders,
+  getKV,
+  jsonResponse,
+  parsePublicHttpsUrl,
+  verifyRequestAuth,
+} from './_kvAdapter.js'
 
 const REQUEST_TIMEOUT_MS = 10_000
 const MAX_BACKUP_BYTES = 2 * 1024 * 1024
 const BACKUP_PREFIX = 'cloudnav_backup'
-
-function credential(request) {
-  const authorization = request.headers.get('authorization') || ''
-  if (/^bearer\s+/i.test(authorization)) return authorization.replace(/^bearer\s+/i, '').trim()
-  return request.headers.get('x-auth-password') || ''
-}
-
-function isPrivateHostname(hostname) {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
-  if (host === 'localhost' || host.endsWith('.local') || host === '::1' || host.includes(':'))
-    return true
-  const octets = host.split('.').map(Number)
-  if (
-    octets.length !== 4 ||
-    octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)
-  )
-    return false
-  const [a, b] = octets
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168)
-  )
-}
-
-function parseRemoteUrl(value) {
-  const parsed = new URL(value)
-  if (
-    parsed.protocol !== 'https:' ||
-    parsed.username ||
-    parsed.password ||
-    isPrivateHostname(parsed.hostname)
-  ) {
-    throw new Error('Only public HTTPS WebDAV URLs are allowed')
-  }
-  parsed.search = ''
-  parsed.hash = ''
-  return parsed
-}
 
 async function fetchWithTimeout(url, init) {
   const controller = new AbortController()
@@ -59,29 +23,26 @@ async function fetchWithTimeout(url, init) {
   }
 }
 
-/** 拼接自定义文件夹目录，返回以 / 结尾的目录 URL */
 function buildDirUrl(baseUrl, folder) {
   const f = String(folder || '')
     .trim()
     .replace(/^\/+|\/+$/g, '')
+    .split('/')
+    .filter(segment => segment && segment !== '.' && segment !== '..' && /^[a-zA-Z0-9._-]+$/.test(segment))
+    .join('/')
   return f ? baseUrl + f + '/' : baseUrl
 }
 
-/** 防止文件名穿越，仅允许安全的纯文件名 */
 function sanitizeFilename(name) {
   const base = String(name || '').split('/').filter(Boolean).pop() || ''
   return /^[a-zA-Z0-9._-]+$/.test(base) ? base : ''
 }
 
 function defaultBackupFilename() {
-  const ts = new Date()
-    .toISOString()
-    .replace(/[:.]/g, '-')
-    .slice(0, 19)
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   return `${BACKUP_PREFIX}_${ts}.json`
 }
 
-/** 粗粒度解析 PROPFIND 的多状态响应，兼容 d:、D:、lp1: 等不同命名空间前缀 */
 function parsePropfind(body) {
   const parts = body.split(/<(?:[^>:]+:)?response[\s>]/gi)
   const items = []
@@ -118,11 +79,7 @@ export async function onRequest(context) {
 
   try {
     const kv = getKV(env)
-    const authenticated = await verifyAuth({
-      providedPassword: credential(request),
-      serverPassword: env.PASSWORD,
-      kv,
-    })
+    const authenticated = await verifyRequestAuth(request, env, kv)
     if (!authenticated) return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders)
 
     const body = await request.json()
@@ -134,10 +91,12 @@ export async function onRequest(context) {
 
     let parsedBaseUrl
     try {
-      parsedBaseUrl = parseRemoteUrl(config.url.trim())
+      parsedBaseUrl = parsePublicHttpsUrl(config.url.trim())
     } catch {
       return jsonResponse({ error: 'Invalid WebDAV URL' }, 400, corsHeaders)
     }
+    parsedBaseUrl.search = ''
+    parsedBaseUrl.hash = ''
     let baseUrl = parsedBaseUrl.toString()
     if (!baseUrl.endsWith('/')) baseUrl += '/'
 
@@ -188,11 +147,7 @@ export async function onRequest(context) {
         return jsonResponse({ error: 'Backup file not found' }, 404, corsHeaders)
       }
       if (!response.ok) {
-        return jsonResponse(
-          { error: `WebDAV Error: ${response.status}` },
-          response.status,
-          corsHeaders
-        )
+        return jsonResponse({ error: 'WebDAV request failed' }, 502, corsHeaders)
       }
       const contentLength = Number(response.headers.get('content-length') || 0)
       if (contentLength > MAX_BACKUP_BYTES) {
@@ -200,7 +155,11 @@ export async function onRequest(context) {
       }
       let data
       try {
-        data = JSON.parse(new TextDecoder().decode(await response.arrayBuffer()))
+        const raw = await response.arrayBuffer()
+        if (raw.byteLength > MAX_BACKUP_BYTES) {
+          return jsonResponse({ error: 'Backup file is too large' }, 413, corsHeaders)
+        }
+        data = JSON.parse(new TextDecoder().decode(raw))
       } catch {
         return jsonResponse({ error: 'Backup file is corrupted' }, 422, corsHeaders)
       }
@@ -221,6 +180,6 @@ export async function onRequest(context) {
     return jsonResponse({ success, status: response.status }, 200, corsHeaders)
   } catch (err) {
     console.error('WebDAV API error:', err)
-    return jsonResponse({ error: err.message }, 500, corsHeaders)
+    return jsonResponse({ error: 'WebDAV request failed' }, 500, corsHeaders)
   }
 }

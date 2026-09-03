@@ -16,7 +16,7 @@
 
 * 新增网站时自动获取 favicon，支持 EdgeOne Blob 缓存、Google、FaviconExtractor、自定义 URL/API
 
-* 管理登录与权限控制，登录状态保存在浏览器本地
+* 管理登录与权限控制，登录会话使用 HttpOnly Cookie
 
 * localStorage 快速缓存，登录后自动同步 EdgeOne KV
 
@@ -66,7 +66,15 @@ pnpm preview     # 本地预览生产构建
 
 * 输出目录：`dist`
 
-后端需要绑定名为 `CLOUDNAV_KV` 的 KV 命名空间，并设置 `PASSWORD` 环境变量作为管理密码。可选设置 `ALLOWED_ORIGIN` 限制跨域来源。
+环境变量与绑定（本次安全修复没有新增变量）：
+
+| 名称 | 必填 | 说明 |
+|------|------|------|
+| `CLOUDNAV_KV` | 是 | EdgeOne KV 命名空间绑定，存储书签、分类、配置和登录 Token |
+| `PASSWORD` | 是 | 管理员密码 |
+| `ALLOWED_ORIGIN` | 建议 | CORS 允许来源。生产环境应设为站点完整 Origin，例如 `https://example.com`。未设置时默认为 `*`，跨域 Cookie 登录不会生效 |
+
+登录成功后服务端下发 `cloudnav_auth` HttpOnly Cookie。写操作同时接受该 Cookie、`Authorization: Bearer` 或 `x-auth-password`。
 
 ## MCP 部署
 
@@ -112,7 +120,9 @@ https://YOUR_DOMAIN/api/mcp
 
 端点支持 MCP Streamable HTTP/SDK，并实现以下工具：
 
-* 读取（公开）：`list_links`、`search_links`、`list_categories`、`get_config`
+* 读取（公开）：`list_links`、`search_links`、`list_categories`
+
+* 配置读取：`get_config` 公开时会脱敏；`ai` / `webdav` 等密钥字段仅认证后返回
 
 * 链接写入（需认证）：`add_link`、`update_link`、`delete_link`、`reorder_links`
 
@@ -122,21 +132,23 @@ https://YOUR_DOMAIN/api/mcp
 
 并暴露两个结构化资源：`cloudnav://categories` 与 `cloudnav://links`，可由客户端通过 `resources/list` 与 `resources/read` 读取。
 
-读操作公开可用；写操作需要在 `Authorization: Bearer <密码>` 头（或 `x-auth-password`）中携带站点管理密码。登录后的「设置 → MCP / EdgeOne 部署」面板提供了可直接复制的客户端配置（Claude Desktop、Cursor、Cherry Studio）。
+写操作以及带密钥的配置读取需要 `Authorization: Bearer <密码>`、`x-auth-password` 或已登录的 `cloudnav_auth` Cookie。登录后的「设置 → MCP / EdgeOne 部署」面板提供了可直接复制的客户端配置（Claude Desktop、Cursor、Cherry Studio）。
 
 ## 许可证
 
 本项目使用 [GLWTPL](https://github.com/me-shaon/GLWTPL) 许可证。
 
-## Security notes
+## 安全说明
 
-* Public configuration responses redact API keys, passwords, tokens, credentials, and custom headers.
+* 公开配置响应会脱敏 API Key、密码、Token、凭据和自定义 headers。
 
-* Generic KV reads are not exposed; administrative reads and writes require authentication.
+* KV 写入仅允许白名单 key（`config`、`cate_config` 以及 `config:*` / `links:*` 等业务键），禁止覆盖 `auth_token:*`。
 
-* WebDAV and icon import requests require authentication, public HTTPS URLs, timeouts, and size limits.
+* WebDAV 与图标导入需要认证，仅接受公网 HTTPS，并限制超时和体积。
 
-* Login attempts are rate-limited per client address.
+* 登录按边缘客户端 IP 限流；密码使用恒定时间比较。
+
+* Favicon 的 `domain` / `key` 会做格式校验；上传拒绝 SVG。
 
 ## WebDAV backup API
 

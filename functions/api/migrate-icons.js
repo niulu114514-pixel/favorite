@@ -1,4 +1,4 @@
-import { getKV, getCorsHeaders, verifyAuth, jsonResponse } from './_kvAdapter.js';
+import { getKV, getCorsHeaders, jsonResponse, verifyRequestAuth } from './_kvAdapter.js';
 
 const UPSTREAM_PROVIDERS = [
   (domain) => `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
@@ -52,13 +52,8 @@ export async function onRequest(context) {
     return jsonResponse({ error: 'Method Not Allowed' }, 405, corsHeaders);
   }
 
-  const providedPassword = request.headers.get('x-auth-password');
   const kv = getKV(env);
-  const isAuthenticated = await verifyAuth({
-    providedPassword,
-    serverPassword: env.PASSWORD,
-    kv,
-  });
+  const isAuthenticated = await verifyRequestAuth(request, env, kv);
 
   if (!isAuthenticated) {
     return jsonResponse({ error: '需要密码验证' }, 401, corsHeaders);
@@ -163,6 +158,6 @@ export async function onRequest(context) {
 
   } catch (err) {
     console.error('Migration error:', err);
-    return jsonResponse({ error: err.message }, 500, corsHeaders);
+    return jsonResponse({ error: 'Migration failed' }, 500, corsHeaders);
   }
 }

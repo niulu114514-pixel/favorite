@@ -173,7 +173,11 @@ async function testWebDav() {
   try {
     const response = await fetch('/api/webdav', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-auth-password': props.token },
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(props.token && props.token !== 'session' ? { 'x-auth-password': props.token } : {}),
+      },
       body: JSON.stringify({ operation: 'check', config: draft.webdav }),
     })
     const result = await response.json().catch(() => ({}))
@@ -197,7 +201,11 @@ const webdavConfigured = computed(
 function runWebDav<T>(operation: string, payload?: unknown): Promise<T> {
   return fetch('/api/webdav', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-auth-password': props.token },
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(props.token && props.token !== 'session' ? { 'x-auth-password': props.token } : {}),
+    },
     body: JSON.stringify({ operation, config: draft.webdav, payload }),
   }).then<T>(async response => {
     const result = await response.json().catch(() => ({}))

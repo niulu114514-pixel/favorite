@@ -7,7 +7,14 @@
 //   - per-category links -> key `links:<catId>` (array order = card order)
 //   - config sections -> key `config:<section>`
 
-import { getCorsHeaders, getKV, jsonResponse, verifyAuth } from './_kvAdapter.js';
+import {
+  getCorsHeaders,
+  getKV,
+  isHttpUrl,
+  jsonResponse,
+  sanitizePublicConfig,
+  verifyRequestAuth,
+} from './_kvAdapter.js';
 
 const PROTOCOL_VERSION = '2025-03-26';
 const SERVER_INFO = { name: 'CloudNav MCP', version: '1.1.0' };
@@ -288,7 +295,8 @@ function sanitizeLinkFields(args) {
   if (args.url !== undefined) {
     const raw = String(args.url).trim().slice(0, 2048);
     if (!raw) return out;
-    out.url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    if (isHttpUrl(candidate)) out.url = candidate;
   }
   if (args.description !== undefined) out.description = String(args.description).slice(0, 500);
   if (args.icon !== undefined) out.icon = String(args.icon).slice(0, 1000);
@@ -307,18 +315,8 @@ function makeId() {
     : `${Date.now()}-${Math.random()}`;
 }
 
-function getCredentials(request) {
-  const authorization = request.headers.get('authorization') || '';
-  if (/^bearer\s+/i.test(authorization)) return authorization.replace(/^bearer\s+/i, '').trim();
-  return request.headers.get('x-auth-password') || '';
-}
-
 async function isAuthenticated(request, env, kv) {
-  return verifyAuth({
-    providedPassword: getCredentials(request),
-    serverPassword: env?.PASSWORD,
-    kv,
-  });
+  return verifyRequestAuth(request, env, kv);
 }
 
 async function readConfigSection(kv, section) {
@@ -371,8 +369,11 @@ async function callTool(name, args, kv, authenticated) {
   }
 
   if (name === 'get_config') {
+    if (!authenticated && (args.section === 'ai' || args.section === 'webdav')) {
+      return textResult({});
+    }
     const loaded = await readConfigSection(kv, args.section);
-    return textResult(loaded ?? {});
+    return textResult(authenticated ? loaded ?? {} : sanitizePublicConfig(loaded ?? {}));
   }
 
   if (!authenticated) return textResult('Authentication is required for write operations.', true);
@@ -555,8 +556,8 @@ async function handleMessage(message, request, env, kv) {
       },
       serverInfo: SERVER_INFO,
       instructions:
-        'Read-only tools (list_links, search_links, list_categories, get_config) are open. ' +
-        'Write tools and config updates require an Authorization Bearer token (the site admin password). ' +
+        'list_links, search_links and list_categories are public. ' +
+        'get_config returns secrets only when authenticated; write tools require an Authorization Bearer token. ' +
         'Use reorder_categories / reorder_links to persist sorting.',
     });
   }

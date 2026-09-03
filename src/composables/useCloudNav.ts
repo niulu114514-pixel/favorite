@@ -14,7 +14,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit) {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
   try {
-    return await fetch(input, { ...init, signal: controller.signal })
+    return await fetch(input, { credentials: 'include', ...init, signal: controller.signal })
   } finally {
     window.clearTimeout(timer)
   }
@@ -25,6 +25,12 @@ export function useCloudNav() {
   const categories = ref<Category[]>([])
   const token = ref(localStorage.getItem(AUTH_KEY) || '')
   const loading = ref(true)
+
+  function authHeaders(extra?: Record<string, string>) {
+    const headers: Record<string, string> = { ...extra }
+    if (token.value && token.value !== 'session') headers['x-auth-password'] = token.value
+    return headers
+  }
   const syncStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const authRequired = ref(false)
   let syncPromise: Promise<void> | null = null
@@ -102,10 +108,10 @@ export function useCloudNav() {
     categories.value = local.categories
     loading.value = false
     try {
-      const authHeaders = token.value ? { 'x-auth-password': token.value } : undefined
-      const [dataResponse, configResponse] = await Promise.all([
+      const [dataResponse, configResponse, authResponse] = await Promise.all([
         fetchWithTimeout('/api/storage?getConfig=true&readOnly=true'),
-        fetchWithTimeout('/api/storage?getConfig=all', { headers: authHeaders }),
+        fetchWithTimeout('/api/storage?getConfig=all', { headers: authHeaders() }),
+        fetchWithTimeout('/api/storage?checkAuth=true', { headers: authHeaders() }),
       ])
       if (dataResponse.ok) {
         const cloud = await dataResponse.json()
@@ -118,6 +124,15 @@ export function useCloudNav() {
       }
       const loaded = configResponse.ok ? await configResponse.json() : {}
       applyConfig(loaded)
+      if (authResponse.ok) {
+        const authState = await authResponse.json()
+        if (authState.authenticated) {
+          if (!token.value) token.value = 'session'
+        } else {
+          token.value = ''
+          localStorage.removeItem(AUTH_KEY)
+        }
+      }
     } catch (error) {
       console.info('Cloud data is unavailable; using the local cache.', error)
     } finally {
@@ -134,7 +149,10 @@ export function useCloudNav() {
     Object.assign(config.ai, ai)
     Object.assign(config.icon, icon)
     Object.assign(config.webdav, webdav)
-    Object.assign(config.background, { ...DEFAULT_BACKGROUND_CONFIG, ...(loaded.background || {}) })
+    Object.assign(config.background, {
+      ...DEFAULT_BACKGROUND_CONFIG,
+      ...((loaded.background || {}) as Partial<BackgroundConfig>),
+    })
     config.title = ai.websiteTitle || config.title
     config.navigationName = ai.navigationName || config.navigationName
     config.defaultViewMode = view.defaultMode || config.defaultViewMode
@@ -153,6 +171,7 @@ export function useCloudNav() {
     if (!authRequired.value) authRequired.value = true
     token.value = ''
     localStorage.removeItem(AUTH_KEY)
+    void fetchWithTimeout('/api/auth', { method: 'DELETE' }).catch(() => {})
   }
 
   function resetAuthRequired() {
@@ -172,7 +191,7 @@ export function useCloudNav() {
           const revision = syncRevision
           const response = await fetchWithTimeout('/api/storage', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-auth-password': token.value },
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ links: links.value, categories: categories.value }),
           })
           if (!response.ok) {
@@ -200,14 +219,12 @@ export function useCloudNav() {
       body: JSON.stringify({ password }),
     })
     if (!response.ok) return false
-    const data = await response.json()
-    if (!data.success || !data.token) return false
-    token.value = data.token
-    localStorage.setItem(AUTH_KEY, data.token)
+    const data = await response.json().catch(() => ({}))
+    if (!data.success) return false
+    token.value = 'session'
+    localStorage.removeItem(AUTH_KEY)
     try {
-      const configResponse = await fetchWithTimeout('/api/storage?getConfig=all', {
-        headers: { 'x-auth-password': data.token },
-      })
+      const configResponse = await fetchWithTimeout('/api/storage?getConfig=all')
       if (configResponse.ok) applyConfig(await configResponse.json())
     } catch {
       // Authentication remains valid even if private config refresh fails.
@@ -224,6 +241,7 @@ export function useCloudNav() {
         if (provider) provider.apiKey = ''
       }
     }
+    void fetchWithTimeout('/api/auth', { method: 'DELETE' }).catch(() => {})
   }
 
   function saveLink(link: Partial<LinkItem>) {
@@ -332,7 +350,7 @@ export function useCloudNav() {
     if (!token.value) throw new Error('请先登录')
     const response = await fetchWithTimeout('/api/storage', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-auth-password': token.value },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ saveConfig: section, config: value }),
     })
     if (!response.ok) {
@@ -345,7 +363,7 @@ export function useCloudNav() {
     if (!token.value) throw new Error('请先登录')
     const response = await fetchWithTimeout('/api/storage', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-auth-password': token.value },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ saveConfig: 'batch', configs }),
     })
     if (!response.ok) {
