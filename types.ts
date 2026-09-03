@@ -177,16 +177,18 @@ export interface WeatherConfig {
 }
 
 // 随机背景图片来源类型
-export type BackgroundSource = 'loli' | 'custom';
+export type BackgroundSource = 'loli' | 'jinghuashang' | 'custom';
 
 // 随机背景配置
 export interface BackgroundConfig {
   enabled: boolean;
   source: BackgroundSource;
-  // LoliApi 图片地址（source 为 loli 时使用）
+  // 图片接口地址（source 为 loli / jinghuashang 时使用）
   apiUrl: string;
   // LoliApi 可选：指定图片 id
   id?: string;
+  // Jinghuashang 可选：拾取的图片集（random / hp / sp / huaming）
+  sort?: string;
   // 自定义图片直链或随机图接口（source 为 custom 时使用）
   customUrl?: string;
   // 自动轮换间隔（分钟），0 表示不自动轮换，仅在重新进入时换图

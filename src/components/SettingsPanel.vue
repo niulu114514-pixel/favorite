@@ -189,15 +189,38 @@ watch(
 
 // ===== 随机背景预览 =====
 const bgPreviewUrl = ref('')
+const bgDocsOpen = ref(false)
+
+// 切换到 Jinghuashang 时，若地址仍是默认的 LoliApi，则自动填入其默认地址。
+watch(
+  () => draft.background.source,
+  source => {
+    if (
+      source === 'jinghuashang' &&
+      (!draft.background.apiUrl || draft.background.apiUrl === DEFAULT_BACKGROUND_CONFIG.apiUrl)
+    ) {
+      draft.background.apiUrl = 'https://imgapi.jinghuashang.cn/random'
+    }
+  }
+)
 
 function buildBgPreviewUrl() {
   let url =
-    draft.background.source === 'custom' && draft.background.customUrl?.trim()
-      ? draft.background.customUrl.trim()
-      : draft.background.apiUrl.trim()
+    draft.background.source !== 'custom' ||
+    !draft.background.customUrl?.trim()
+      ? draft.background.apiUrl.trim()
+      : draft.background.customUrl.trim()
   if (draft.background.source === 'loli' && draft.background.id && /^\d{1,6}$/.test(draft.background.id)) {
     url += url.includes('?') ? '&' : '?'
     url += 'id=' + draft.background.id
+  }
+  if (
+    draft.background.source === 'jinghuashang' &&
+    draft.background.sort &&
+    /^[a-zA-Z]{1,20}$/.test(draft.background.sort)
+  ) {
+    url += url.includes('?') ? '&' : '?'
+    url += 'sort=' + draft.background.sort
   }
   url += url.includes('?') ? '&' : '?'
   url += 't=' + Date.now()
@@ -208,20 +231,64 @@ function previewBg() {
   bgPreviewUrl.value = buildBgPreviewUrl()
 }
 
+function sectionValue(name: keyof SettingsDraft) {
+  const d = draft
+  switch (name) {
+    case 'ai':
+      return { ...d.ai, websiteTitle: d.websiteTitle, navigationName: d.navigationName }
+    case 'background':
+      return d.background
+    case 'icon':
+      return d.icon
+    case 'webdav':
+      return d.webdav
+    default:
+      return d[name]
+  }
+}
+
+/** 原始配置中该分区的取值（用于与草稿比对，只提交发生变更的分区） */
+function originalSectionValue(name: keyof SettingsDraft, source: SettingsDraft) {
+  switch (name) {
+    case 'ai':
+      return {
+        ...source.ai,
+        websiteTitle: source.websiteTitle || source.ai.websiteTitle || '',
+        navigationName: source.navigationName || source.ai.navigationName || '',
+      }
+    case 'background':
+      return source.background
+    case 'icon':
+      return source.icon
+    case 'webdav':
+      return source.webdav
+    default:
+      return source[name]
+  }
+}
+
 async function save() {
   saving.value = true
   saveError.value = ''
-  const ai = { ...draft.ai, websiteTitle: draft.websiteTitle, navigationName: draft.navigationName }
+  const configs: Record<string, unknown> = {}
+  const sections: Array<[string, unknown]> = []
+  ;(['ai', 'background', 'icon', 'webdav'] as const).forEach(name => {
+    sections.push([name, sectionValue(name)])
+  })
+  sections.push(['ui', { showPinnedWebsites: draft.showPinned }])
+  sections.push(['view', { defaultMode: draft.defaultViewMode }])
   try {
-    await props.saveConfigBatch({
-      ai,
-      icon: draft.icon,
-      webdav: draft.webdav,
-      background: draft.background,
-      ui: { showPinnedWebsites: draft.showPinned },
-      view: { defaultMode: draft.defaultViewMode },
-    })
-    emit('saved', { ...draft, ai })
+    for (const [section, value] of sections) {
+      const key = section as keyof SettingsDraft
+      if (JSON.stringify(value) !== JSON.stringify(originalSectionValue(key, props.config))) {
+        configs[key] = value
+      }
+    }
+    // 至少提交一项，避免“未改动却整体覆写”的无效请求。
+    if (Object.keys(configs).length) {
+      await props.saveConfigBatch(configs)
+    }
+    emit('saved', { ...draft, ai: { ...draft.ai, websiteTitle: draft.websiteTitle, navigationName: draft.navigationName } })
     emit('close')
   } catch (error) {
     saveError.value = error instanceof Error ? error.message : '保存失败'
@@ -640,11 +707,17 @@ function formatSize(bytes: number) {
               <label
                 >图片来源<select v-model="draft.background.source">
                   <option value="loli">LoliApi（二次元随机图）</option>
+                  <option value="jinghuashang">Jinghuashang（二次元随机图）</option>
                   <option value="custom">自定义图片</option>
                 </select></label
               >
               <label v-if="draft.background.source === 'loli'"
                 >LoliApi 地址<input v-model="draft.background.apiUrl" placeholder="https://www.loliapi.com/acg/"
+              /></label>
+              <label v-else-if="draft.background.source === 'jinghuashang'"
+                >API 地址<input
+                  v-model="draft.background.apiUrl"
+                  placeholder="https://imgapi.jinghuashang.cn/random"
               /></label>
               <label v-else
                 >图片 URL<input
@@ -655,6 +728,13 @@ function formatSize(bytes: number) {
             <div class="settings-grid">
               <label v-if="draft.background.source === 'loli'"
                 >指定图片 id（可选）<input v-model="draft.background.id" placeholder="留空则随机" /></label
+              ><label v-else-if="draft.background.source === 'jinghuashang'"
+                >图片集<select v-model="draft.background.sort">
+                  <option value="random">random（全部图片）</option>
+                  <option value="hp">hp（横屏壁纸）</option>
+                  <option value="sp">sp（竖屏壁纸）</option>
+                  <option value="huaming">huaming（花铭老师，暂关闭）</option>
+                </select></label
               ><label
                 >自动轮换（分钟）<input
                   v-model.number="draft.background.autoRefreshMin"
@@ -704,6 +784,35 @@ function formatSize(bytes: number) {
                   object-position: center;
                 "
               />
+            </div>
+            <button
+              v-if="draft.background.source === 'jinghuashang'"
+              class="settings-link"
+              type="button"
+              @click="bgDocsOpen = !bgDocsOpen"
+            >
+              <BookOpen :size="15" />{{ bgDocsOpen ? '收起' : '查看' }} Jinghuashang 随机图 API 食用说明
+            </button>
+            <div v-if="bgDocsOpen" class="bg-docs">
+              <div class="bg-docs-line"><strong>随机图 API 地址</strong><code>https://imgapi.jinghuashang.cn/random</code></div>
+              <div class="bg-docs-line"><strong>调用方法</strong><code>GET</code></div>
+              <p class="bg-docs-p">
+                接口返回的是一张会实时重定向的随机二次元图片，本站已将其接入为网页背景；保存并启用后，
+                访问者每次进入或按“自动轮换”间隔都会自动换一张。不支持直接取回一张图片用于其它用途。</p>
+              <div class="bg-docs-line"><strong>常用参数（直接拼在地址后）</strong></div>
+              <ul class="bg-docs-list">
+                <li><code>sort</code> — 图片集：<code>random</code>（全部）/ <code>hp</code>（横屏）/ <code>sp</code>（竖屏）/ <code>huaming</code>（花铭老师，暂关闭）。不传默认随机全部。</li>
+                <li><code>type</code> — 输出方式：<code>text</code>（输出图片 URL）/ <code>json</code>（输出 JSON）。不传默认重定向。</li>
+                <li><code>num</code> — 一次返回图片数量（≤100 正整数，非 1 时强制 JSON）。</li>
+                <li><code>only_check</code> — 传入任意真值即检查剩余额度，其它参数失效。</li>
+              </ul>
+              <div class="bg-docs-line"><strong>轮播背景（备选接入方式）</strong><code>https://imgapi.jinghuashang.cn/player?time=10</code></div>
+              <div class="bg-docs-line"><strong>注意事项</strong></div>
+              <ul class="bg-docs-list">
+                <li>图片来自互联网，版权不确定，侵删。</li>
+                <li>接口与图床均不保障可用性与稳定性，建议自备备用来源。</li>
+                <li>绿色健康（不完全），请勿用于不适合的公共场合。</li>
+              </ul>
             </div>
           </section>
 
@@ -1356,6 +1465,56 @@ html.dark .settings-backdrop {
 .bg-preview-hint {
   font-size: 12px;
   color: var(--c-faint);
+}
+.settings-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.bg-docs {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  background: var(--c-bg-soft);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--c-faint);
+}
+.bg-docs-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 4px 0;
+}
+.bg-docs-p {
+  margin: 4px 0;
+}
+.bg-docs code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(127, 127, 159, 0.12);
+  color: var(--c-text);
+  word-break: break-all;
+}
+.bg-docs-list {
+  margin: 4px 0 6px;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+}
+.bg-docs-list li {
+  margin: 0;
 }
 .settings-check {
   display: flex !important;

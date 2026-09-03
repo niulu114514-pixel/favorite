@@ -37,9 +37,6 @@ export function useCloudNav() {
   }
   const syncStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const authRequired = ref(false)
-  let syncPromise: Promise<void> | null = null
-  let syncRevision = 0
-  let syncedRevision = 0
   let syncIdleTimer: number | undefined
   const config = reactive({
     title: '落花流水个人导航',
@@ -181,38 +178,78 @@ export function useCloudNav() {
     authRequired.value = false
   }
 
-  function persist(): Promise<void> | undefined {
-    saveLocal()
-    if (!token.value) return undefined
-    syncRevision += 1
-    syncStatus.value = 'saving'
-    if (syncPromise) return syncPromise
+  // 云端保存：先落本地缓存（同步、零等待），再防抖 + 去重地上报云端。
+  // 一次性动作（收藏/编辑/排序）会被合并为一次 POST，且当快照与上次成功
+  // 上报内容一致时直接跳过，避免无意义的整体覆写。
+  const SYNC_DEBOUNCE = 350
+  let debounceTimer: number | undefined
+  let flushChain: Promise<void> = Promise.resolve()
+  let pendingSnapshot: string | null = null
+  let lastSentSnapshot = ''
 
-    syncPromise = (async () => {
-      try {
-        while (syncedRevision < syncRevision) {
-          const revision = syncRevision
-          const response = await fetchWithTimeout('/api/storage', {
-            method: 'POST',
-            headers: authHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({ links: links.value, categories: categories.value }),
-          })
-          if (!response.ok) {
-            if (response.status === 401) invalidateToken()
-            throw new Error(`HTTP ${response.status}`)
-          }
-          syncedRevision = revision
-        }
-        syncStatus.value = 'saved'
-        if (syncIdleTimer) window.clearTimeout(syncIdleTimer)
-        syncIdleTimer = window.setTimeout(() => (syncStatus.value = 'idle'), 1200)
-      } catch {
-        syncStatus.value = 'error'
-      } finally {
-        syncPromise = null
+  function currentSnapshot() {
+    return JSON.stringify({ links: links.value, categories: categories.value })
+  }
+
+  function markSavedTemporarily() {
+    syncStatus.value = 'saved'
+    if (syncIdleTimer) window.clearTimeout(syncIdleTimer)
+    syncIdleTimer = window.setTimeout(() => (syncStatus.value = 'idle'), 1200)
+  }
+
+  async function enqueueSnapshot(payload: string) {
+    try {
+      const response = await fetchWithTimeout('/api/storage', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: payload,
+      })
+      if (!response.ok) {
+        if (response.status === 401) invalidateToken()
+        throw new Error(`HTTP ${response.status}`)
       }
-    })()
-    return syncPromise
+      lastSentSnapshot = payload
+      markSavedTemporarily()
+    } catch {
+      syncStatus.value = 'error'
+    }
+  }
+
+  async function runFlush() {
+    debounceTimer = undefined
+    if (pendingSnapshot == null) return
+    const payload = pendingSnapshot
+    pendingSnapshot = null
+    // 登录态丢失后不再上报；数据已持久化到本地缓存。
+    if (!token.value) return
+    // 快照与上次成功上报一致（例如修改后又撤销），无需再 POST。
+    if (payload === lastSentSnapshot) {
+      markSavedTemporarily()
+      return
+    }
+    syncStatus.value = 'saving'
+    // 串行化：即便防抖窗口被后续动作重置，也保证上报有序、后写覆盖先写。
+    flushChain = flushChain.then(() => enqueueSnapshot(payload))
+    await flushChain
+  }
+
+  function persist(): Promise<void> {
+    saveLocal()
+    pendingSnapshot = currentSnapshot()
+    if (!token.value) return Promise.resolve()
+    if (debounceTimer != null) window.clearTimeout(debounceTimer)
+    debounceTimer = window.setTimeout(() => void runFlush(), SYNC_DEBOUNCE)
+    return flushChain
+  }
+
+  /** 立即上报（关键操作，如备份恢复、退出前），跳过防抖窗口。 */
+  async function flushNow(): Promise<void> {
+    if (debounceTimer != null) {
+      window.clearTimeout(debounceTimer)
+      debounceTimer = undefined
+    }
+    await runFlush()
+    await flushChain
   }
 
   async function login(password: string) {
@@ -400,6 +437,7 @@ export function useCloudNav() {
     reorderLinks,
     removeCategory,
     persist,
+    flushNow,
     saveConfig,
     saveConfigBatch,
   }

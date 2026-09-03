@@ -587,7 +587,8 @@ function buildBackupData() {
 async function restoreBackupData(data: Record<string, unknown>) {
   if (Array.isArray(data.links)) nav.links.value = data.links as LinkItem[]
   if (Array.isArray(data.categories)) nav.categories.value = data.categories as Category[]
-  await nav.persist()
+  // 恢复属于关键操作：跳过防抖立即上报云端。
+  await nav.flushNow()
 }
 
 function onSettingsSaved(settings: {
@@ -619,12 +620,10 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') searchQuery.value = ''
 }
 
-/** 随机背景层的图片样式（含模糊） */
+/** 随机背景图层的样式（含模糊）。深色模式/透明底时保留放大以隐藏模糊边缘。 */
 const bgStyle = computed(() => {
-  if (!background.imageUrl.value) return {}
   const blur = Number(nav.config.background.blur) || 0
   return {
-    backgroundImage: `url("${background.imageUrl.value}")`,
     filter: blur > 0 ? `blur(${blur}px)` : undefined,
   }
 })
@@ -658,7 +657,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
   cancelCategoryDragSession()
-  background.stopAuto()
+  background.stopAll()
 })
 </script>
 
@@ -681,7 +680,16 @@ onBeforeUnmount(() => {
       </div>
     </Transition>
     <div v-if="background.imageUrl.value" class="bg-layer">
-      <div class="bg-image" :style="bgStyle" />
+      <img
+        :key="background.imageUrl.value"
+        class="bg-image"
+        :src="background.imageUrl.value"
+        :style="bgStyle"
+        alt=""
+        aria-hidden="true"
+        loading="eager"
+        decoding="async"
+      />
       <div class="bg-overlay" :style="{ background: bgOverlayColor }" />
     </div>
     <div v-if="sidebarOpen" class="sidebar-mask" @click="sidebarOpen = false" />
@@ -1244,9 +1252,26 @@ html.dark .brand-splash {
 .bg-image {
   position: absolute;
   inset: 0;
-  background-size: cover;
-  background-position: center;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
   transform: scale(1.06); /* 放大以隐藏模糊产生的边缘空白 */
+  animation: bg-fade 0.6s ease both;
+  will-change: transform, opacity;
+}
+@keyframes bg-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bg-image {
+    animation: none;
+  }
 }
 .bg-overlay {
   position: absolute;
