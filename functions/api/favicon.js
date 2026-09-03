@@ -12,6 +12,8 @@ import {
 const UPSTREAM_PROVIDERS = [
   domain => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`,
   domain => `https://www.faviconextractor.com/favicon/${encodeURIComponent(domain)}?larger=true`,
+  // 最后兜底：直接抓取目标网站自身的 favicon，确保能拿到该网址自己的图标而不退回本站默认
+  domain => `https://${encodeURIComponent(domain)}/favicon.ico`,
 ]
 
 const UPSTREAM_TIMEOUT_MS = 10_000

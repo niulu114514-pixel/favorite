@@ -20,6 +20,8 @@ import {
   Star,
   Sparkles,
   Sun,
+  Upload,
+  Image,
   X,
 } from 'lucide-vue-next'
 import type { Category, LinkItem } from '../types'
@@ -46,6 +48,8 @@ const authModalOpen = ref(false)
 const settingsOpen = ref(false)
 const hideTools = ref(localStorage.getItem('cloudnav_hide_tools') === '1')
 const editingLink = ref<Partial<LinkItem>>({})
+const iconUploading = ref(false)
+const iconError = ref('')
 const password = ref('')
 const authError = ref('')
 const showPassword = ref(false)
@@ -364,12 +368,69 @@ function reorderCategoryLevel(draggedId: string, targetId: string) {
 
 function openLinkModal(link?: LinkItem) {
   editingLink.value = link ? { ...link } : { categoryId: nav.categories.value[0]?.id || 'common' }
+  iconUploading.value = false
+  iconError.value = ''
   linkModalOpen.value = true
 }
 
 function openLinkModalForCategory(categoryId: string) {
   editingLink.value = { categoryId }
+  iconUploading.value = false
+  iconError.value = ''
   linkModalOpen.value = true
+}
+
+/** 上传图标（文件或远程 URL）到 EdgeOne Blob，返回可用的图标地址 */
+async function uploadIcon(form: FormData) {
+  const response = await fetch('/api/upload', { method: 'POST', body: form })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok || !data.url) throw new Error(data.error || '上传失败')
+  return data.url as string
+}
+
+async function onPickIconFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  iconUploading.value = true
+  iconError.value = ''
+  const form = new FormData()
+  form.append('file', file)
+  form.append('categoryName', editingLink.value.categoryId || 'common')
+  try {
+    editingLink.value.icon = await uploadIcon(form)
+  } catch (e) {
+    iconError.value = e instanceof Error ? e.message : '上传失败'
+  } finally {
+    iconUploading.value = false
+  }
+}
+
+/** 把输入框里的图标 URL 抓取并存入 Blob，避免外链失效 */
+async function onFetchIconUrl() {
+  const raw = editingLink.value.icon?.trim() || ''
+  if (!raw) {
+    iconError.value = '请先在上方输入图标 URL'
+    return
+  }
+  if (raw.startsWith('/api/favicon?key=')) return
+  if (!/^https?:\/\//i.test(raw)) {
+    iconError.value = '请输入以 http(s):// 开头的图片地址'
+    return
+  }
+  iconUploading.value = true
+  iconError.value = ''
+  const form = new FormData()
+  form.append('url', raw)
+  form.append('categoryName', editingLink.value.categoryId || 'common')
+  try {
+    editingLink.value.icon = await uploadIcon(form)
+  } catch (e) {
+    iconError.value = e instanceof Error ? e.message : '抓取失败'
+  } finally {
+    iconUploading.value = false
+  }
 }
 
 async function submitLink() {
@@ -828,9 +889,54 @@ onBeforeUnmount(() => {
           </button>
           <span v-if="aiError" class="form-error">{{ aiError }}</span>
         </div>
-        <label
-          >图标网址<input v-model="editingLink.icon" placeholder="留空将自动获取 favicon"
-        /></label>
+        <div class="form-group">
+          <span class="field-label">图标</span>
+          <div class="icon-picker">
+            <img
+              v-if="editingLink.icon"
+              :src="editingLink.icon"
+              class="icon-preview"
+              alt="图标预览"
+              @error="(e) => (e.target as HTMLImageElement).src = ''"
+            />
+            <div v-else class="icon-preview icon-preview-empty"><Image :size="22" /></div>
+            <div class="icon-picker-actions">
+              <label class="secondary-button small">
+                <Upload :size="14" />{{ iconUploading ? '处理中…' : '上传图片' }}
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="hidden-input"
+                  :disabled="iconUploading"
+                  @change="onPickIconFile"
+                />
+              </label>
+              <button
+                type="button"
+                class="secondary-button small"
+                :disabled="iconUploading || !editingLink.icon"
+                @click="onFetchIconUrl"
+              >
+                存入本云
+              </button>
+              <button
+                type="button"
+                class="secondary-button small"
+                :disabled="iconUploading"
+                @click="editingLink.icon = ''"
+              >
+                使用默认
+              </button>
+            </div>
+          </div>
+          <input
+            v-model="editingLink.icon"
+            class="field-input"
+            placeholder="或直接粘贴图标 URL，留空自动获取网站 favicon"
+          />
+          <span v-if="iconError" class="form-error">{{ iconError }}</span>
+          <p class="form-hint">不上传图标时，将自动使用该网址自身的 favicon。</p>
+        </div>
         <label
           >分类<select v-model="editingLink.categoryId">
             <option
@@ -1664,6 +1770,68 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   margin: -4px 0 0;
   color: #8490a3;
   font-size: 12px;
+}
+/* ===== 链接表单：图标上传 ===== */
+.form-group {
+  margin: 15px 0;
+}
+.field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4d596a;
+}
+.icon-picker {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin: 8px 0 11px;
+}
+.icon-preview {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  border-radius: 11px;
+  background: #f4f6f9;
+  border: 1px solid #e6e9ef;
+  padding: 6px;
+  flex: 0 0 auto;
+}
+.icon-preview-empty {
+  display: grid;
+  place-items: center;
+  color: #94a0b4;
+  border: 1px dashed #cdd4df;
+}
+.icon-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.icon-picker-actions .secondary-button {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.hidden-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.form-hint {
+  margin: 6px 0 0;
+  color: #8490a3;
+  font-size: 12px;
+}
+.form-error {
+  color: #e04f4d;
+  font-size: 12px;
+  margin-top: 6px;
+  display: block;
 }
 .modal input,
 .modal textarea,
