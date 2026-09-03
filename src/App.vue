@@ -2,16 +2,25 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import {
+  Banknote,
   Bookmark,
   BookOpen,
   Box,
   Briefcase,
+  Building2,
+  Calendar,
+  Camera,
+  Car,
   Check,
   ChevronRight,
   Clapperboard,
+  Clock,
   Cloud,
   Code,
+  Coffee,
   Compass,
+  Cpu,
+  CreditCard,
   Database,
   Dumbbell,
   Eye,
@@ -19,37 +28,54 @@ import {
   FileText,
   Folder,
   Gamepad2,
+  Gift,
+  Github,
   Globe,
+  Globe2,
   GraduationCap,
   Grid2X2,
+  Heart,
+  Home,
   Image,
+  Landmark,
   Layers,
   LayoutList,
   LogIn,
   LogOut,
+  Mail,
+  MapPin,
   Menu,
+  MessageCircle,
   Moon,
   Music,
   Newspaper,
   Palette,
   PanelLeft,
   PenTool,
+  PieChart,
+  Plane,
   Plus,
+  Rocket,
   Search,
   Server,
   Settings,
+  Shield,
   ShoppingBag,
   ShoppingCart,
+  Slack,
   Sparkles,
   Star,
+  Stethoscope,
   Sun,
   Target,
   TrendingUp,
+  Tv,
   Upload,
   Users,
   Wifi,
   Wrench,
   X,
+  Zap,
 } from 'lucide-vue-next'
 import type { Category, LinkItem } from '../types'
 import { useCloudNav } from './composables/useCloudNav'
@@ -211,6 +237,17 @@ function categoryLinks(categoryId: string) {
   return linksByCategory.value.get(categoryId) || []
 }
 
+function categoryCount(category: Category) {
+  const direct = categoryLinks(category.id).length
+  if (category.parentId) return direct
+  return (
+    direct +
+    categoryChildren(category.id).reduce((total, child) => {
+      return total + categoryLinks(child.id).length
+    }, 0)
+  )
+}
+
 function applyTheme() {
   document.documentElement.classList.toggle('dark', dark.value)
   localStorage.setItem('cloudnav_theme_preference', dark.value ? 'dark' : 'light')
@@ -233,40 +270,66 @@ function toggleSidebar() {
 
 /** 分类专属图标：根据分类 icon 字段渲染对应 Lucide 图标，未匹配时回退到文件夹。 */
 const CATEGORY_ICON_MAP: Record<string, Component> = {
+  Banknote,
   Bookmark,
   BookOpen,
   Box,
   Briefcase,
+  Building2,
+  Calendar,
+  Camera,
+  Car,
   Clapperboard,
+  Clock,
   Cloud,
   Code,
+  Coffee,
   Compass,
+  Cpu,
+  CreditCard,
   Database,
   Dumbbell,
   FileText,
   Folder,
   Gamepad2,
+  Gift,
+  Github,
   Globe,
+  Globe2,
   GraduationCap,
   Grid2X2,
+  Heart,
+  Home,
   Image,
+  Landmark,
   Layers,
   LayoutList,
+  Mail,
+  MapPin,
+  MessageCircle,
   Music,
   Newspaper,
   Palette,
   PenTool,
+  PieChart,
+  Plane,
+  Rocket,
   Server,
   Settings,
+  Shield,
   ShoppingBag,
   ShoppingCart,
+  Slack,
   Sparkles,
   Star,
+  Stethoscope,
   Target,
   TrendingUp,
+  Tv,
   Users,
   Wifi,
   Wrench,
+  Zap,
 }
 
 function getCategoryIcon(name?: string): Component {
@@ -463,32 +526,6 @@ async function onPickIconFile(event: Event) {
     editingLink.value.icon = await uploadIcon(form)
   } catch (e) {
     iconError.value = e instanceof Error ? e.message : '上传失败'
-  } finally {
-    iconUploading.value = false
-  }
-}
-
-/** 把输入框里的图标 URL 抓取并存入 Blob，避免外链失效 */
-async function onFetchIconUrl() {
-  const raw = editingLink.value.icon?.trim() || ''
-  if (!raw) {
-    iconError.value = '请先在上方输入图标 URL'
-    return
-  }
-  if (raw.startsWith('/api/favicon?key=')) return
-  if (!/^https?:\/\//i.test(raw)) {
-    iconError.value = '请输入以 http(s):// 开头的图片地址'
-    return
-  }
-  iconUploading.value = true
-  iconError.value = ''
-  const form = new FormData()
-  form.append('url', raw)
-  form.append('categoryName', editingLink.value.categoryId || 'common')
-  try {
-    editingLink.value.icon = await uploadIcon(form)
-  } catch (e) {
-    iconError.value = e instanceof Error ? e.message : '抓取失败'
   } finally {
     iconUploading.value = false
   }
@@ -706,6 +743,7 @@ onBeforeUnmount(() => {
               <component :is="getCategoryIcon(category.icon)" :size="17" /><span
                 class="category-name"
                 >{{ category.name }}</span
+              ><span class="category-count">{{ categoryCount(category) }}</span
               ><span
                 v-if="categoryChildren(category.id).length"
                 class="category-toggle"
@@ -746,6 +784,7 @@ onBeforeUnmount(() => {
               >
                 <component :is="getCategoryIcon(child.icon)" :size="16" /><span
                   >{{ child.name }}</span
+                ><span class="category-count">{{ categoryCount(child) }}</span
                 ><ChevronRight :size="15" />
               </button>
             </div>
@@ -930,8 +969,7 @@ onBeforeUnmount(() => {
       </div>
     </main>
 
-    <div v-if="linkModalOpen" class="modal-backdrop" @click.self="linkModalOpen = false">
-      <form class="modal" @submit.prevent="submitLink">
+    <div v-if="linkModalOpen" class="modal-backdrop"><form class="modal" @submit.prevent="submitLink">
         <div class="modal-title">
           <div>
             <h2>{{ editingLink.id ? '编辑网站' : '添加网站' }}</h2>
@@ -988,22 +1026,6 @@ onBeforeUnmount(() => {
                   @change="onPickIconFile"
                 />
               </label>
-              <button
-                type="button"
-                class="secondary-button small"
-                :disabled="iconUploading || !editingLink.icon"
-                @click="onFetchIconUrl"
-              >
-                存入本云
-              </button>
-              <button
-                type="button"
-                class="secondary-button small"
-                :disabled="iconUploading"
-                @click="editingLink.icon = ''"
-              >
-                使用默认
-              </button>
             </div>
           </div>
           <input

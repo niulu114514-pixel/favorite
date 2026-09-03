@@ -16,8 +16,8 @@ import {
   verifyRequestAuth,
 } from './_kvAdapter.js';
 
-const PROTOCOL_VERSION = '2025-03-26';
-const SERVER_INFO = { name: 'CloudNav MCP', version: '1.1.0' };
+const PROTOCOL_VERSION = '2025-06-18';
+const SERVER_INFO = { name: 'CloudNav MCP', version: '1.2.0' };
 const MAX_MESSAGES_PER_REQUEST = 20;
 
 // Allowed config sections (kept in sync with storage.js CONFIG_SECTIONS).
@@ -75,6 +75,39 @@ const TOOLS = [
       required: ['section'],
     },
   },
+  {
+    name: 'get_stats',
+    description: 'Get navigation statistics: total links, total categories, and per-category link counts.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_link',
+    description: 'Get a single saved link by id.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'get_category',
+    description: 'Get a single category by id.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'list_recent_links',
+    description: 'List the most recently added links, newest first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'integer', description: 'Maximum number of results (default 20).' },
+      },
+    },
+  },
 
   // ---------- Auth write tools: links ----------
   {
@@ -117,6 +150,32 @@ const TOOLS = [
       type: 'object',
       properties: { id: { type: 'string' } },
       required: ['id'],
+    },
+  },
+  {
+    name: 'bulk_add_links',
+    description: 'Add multiple links in a single call. Requires authentication.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        links: {
+          type: 'array',
+          description: 'Links to add.',
+          items: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              url: { type: 'string' },
+              description: { type: 'string' },
+              categoryId: { type: 'string' },
+              icon: { type: 'string' },
+              pinned: { type: 'boolean' },
+            },
+            required: ['title', 'url'],
+          },
+        },
+      },
+      required: ['links'],
     },
   },
   {
@@ -224,9 +283,31 @@ const RESOURCES = [
   },
 ];
 
+const PROMPTS = [
+  {
+    name: 'organize-navigation',
+    description: 'Review and reorganize navigation categories and links.',
+    arguments: [
+      {
+        name: 'goal',
+        description: 'What to organize, e.g. merge duplicates or regroup links.',
+      },
+    ],
+  },
+];
+
 function textResult(value, isError = false) {
+  const isStructured =
+    !isError && value !== null && typeof value === 'object' && !Array.isArray(value);
   return {
-    content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }],
+    content: [
+      {
+        type: 'text',
+        text: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
+        ...(isStructured ? { structuredContent: value } : {}),
+      },
+    ],
+    ...(isStructured ? { structuredContent: value } : {}),
     ...(isError ? { isError: true } : {}),
   };
 }
@@ -376,6 +457,44 @@ async function callTool(name, args, kv, authenticated) {
     return textResult(authenticated ? loaded ?? {} : sanitizePublicConfig(loaded ?? {}));
   }
 
+  if (name === 'get_stats') {
+    const counts = new Map();
+    for (const link of allLinks) {
+      counts.set(link.categoryId, (counts.get(link.categoryId) || 0) + 1);
+    }
+    const categoriesStats = categories.map(category => ({
+      id: category.id,
+      name: category.name,
+      icon: category.icon,
+      parentId: category.parentId,
+      count: counts.get(category.id) || 0,
+    }));
+    return textResult({
+      totalLinks: allLinks.length,
+      totalCategories: categories.length,
+      categories: categoriesStats,
+    });
+  }
+
+  if (name === 'get_link') {
+    const link = allLinks.find(link => link.id === args.id);
+    if (!link) return textResult('Link not found.', true);
+    return textResult(link);
+  }
+
+  if (name === 'get_category') {
+    const category = categories.find(category => category.id === args.id);
+    if (!category) return textResult('Category not found.', true);
+    return textResult(sanitizeCategory(category));
+  }
+
+  if (name === 'list_recent_links') {
+    const limit = Math.max(1, Math.min(100, Number(args.limit) || 20));
+    return textResult(
+      [...allLinks].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, limit)
+    );
+  }
+
   if (!authenticated) return textResult('Authentication is required for write operations.', true);
 
   // ---------- Links ----------
@@ -425,6 +544,35 @@ async function callTool(name, args, kv, authenticated) {
     const links = await readCategoryLinks(kv, current.categoryId);
     await writeCategoryLinks(kv, current.categoryId, links.filter(link => link.id !== current.id));
     return textResult({ deleted: true, id: current.id });
+  }
+
+  if (name === 'bulk_add_links') {
+    if (!Array.isArray(args.links) || !args.links.length) {
+      return textResult('links array is required.', true);
+    }
+    const created = [];
+    for (const item of args.links) {
+      const fields = sanitizeLinkFields(item);
+      if (!fields.title || !fields.url) continue;
+      const categoryId = categories.some(category => category.id === item.categoryId)
+        ? item.categoryId
+        : 'common';
+      created.push({
+        id: makeId(),
+        title: fields.title,
+        url: fields.url,
+        description: fields.description || '',
+        categoryId,
+        icon: fields.icon,
+        pinned: Boolean(item.pinned),
+        createdAt: Date.now(),
+      });
+    }
+    for (const link of created) {
+      const current = await readCategoryLinks(kv, link.categoryId);
+      await writeCategoryLinks(kv, link.categoryId, [link, ...current]);
+    }
+    return textResult({ added: created.length, links: created });
   }
 
   if (name === 'reorder_links') {
@@ -553,10 +701,14 @@ async function handleMessage(message, request, env, kv) {
       capabilities: {
         tools: { listChanged: false },
         resources: { subscribe: false, listChanged: false },
+        prompts: { listChanged: false },
+        logging: {},
+        experimental: {},
       },
       serverInfo: SERVER_INFO,
       instructions:
-        'list_links, search_links and list_categories are public. ' +
+        'Provides saved links, categories, settings and statistics. ' +
+        'Read tools (list_links, search_links, list_categories, get_stats, get_link, get_category, list_recent_links) are public; ' +
         'get_config returns secrets only when authenticated; write tools require an Authorization Bearer token. ' +
         'Use reorder_categories / reorder_links to persist sorting.',
     });
@@ -565,6 +717,32 @@ async function handleMessage(message, request, env, kv) {
   if (message.method === 'tools/list') return rpcResult(message.id, { tools: TOOLS });
   if (message.method === 'resources/list') return rpcResult(message.id, { resources: RESOURCES });
   if (message.method === 'resources/templates/list') return rpcResult(message.id, { resourceTemplates: [] });
+  if (message.method === 'prompts/list') return rpcResult(message.id, { prompts: PROMPTS });
+  if (message.method === 'prompts/get') {
+    const name = message.params?.name;
+    const prompt = PROMPTS.find(item => item.name === name);
+    if (!prompt) return rpcError(message.id, -32602, `Unknown prompt: ${name}`);
+    const goal = String(message.params?.arguments?.goal || '').slice(0, 500);
+    return rpcResult(message.id, {
+      description: prompt.description,
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: [
+              '请帮我整理我的网址导航。先调用 list_categories 和 get_stats 了解结构，',
+              '再使用 search_links / list_links 检查链接，必要时用 update_category / add_category、',
+              'update_link / add_link、reorder_categories / reorder_links 完成整理。',
+              goal ? `整理目标：${goal}` : '',
+            ]
+              .filter(Boolean)
+              .join('\n'),
+          },
+        },
+      ],
+    });
+  }
   if (message.method === 'resources/read') {
     const uri = message.params?.uri;
     const categories = await readCategories(kv);

@@ -3,17 +3,26 @@ import { computed, reactive, ref, watch } from 'vue'
 import {
   ArrowDown,
   ArrowUp,
+  Banknote,
   Bookmark,
   BookOpen,
   Box,
   Briefcase,
+  Building2,
+  Calendar,
+  Camera,
+  Car,
   Check,
   Clapperboard,
+  Clock,
   Cloud,
   CloudUpload,
   Code,
+  Coffee,
   Compass,
   Copy,
+  Cpu,
+  CreditCard,
   Database,
   Download,
   Dumbbell,
@@ -22,33 +31,50 @@ import {
   Folder,
   FolderPlus,
   Gamepad2,
+  Gift,
+  Github,
   Globe,
+  Globe2,
   GraduationCap,
   Grid2X2,
+  Heart,
+  Home,
   Image,
   KeyRound,
+  Landmark,
   Layers,
   LayoutList,
+  Mail,
+  MapPin,
+  MessageCircle,
   Music,
   Newspaper,
   Palette,
   Pencil,
   PenTool,
+  PieChart,
+  Plane,
   RefreshCw,
+  Rocket,
   Save,
   Server,
   Settings,
+  Shield,
   ShoppingBag,
   ShoppingCart,
+  Slack,
   Sparkles,
   Star,
+  Stethoscope,
   Target,
   Trash2,
   TrendingUp,
+  Tv,
   Users,
   Wifi,
   Wrench,
   X,
+  Zap,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import type {
@@ -107,6 +133,13 @@ const settingsTabs = [
   { id: 'webdav', label: 'WebDAV 备份', icon: Cloud },
 ]
 const mcpEndpoint = `${window.location.origin}/api/mcp`
+const mcpTools = [
+  'list_links · search_links · list_categories · get_stats · get_category',
+  'get_link · get_config · list_recent_links · update_config',
+  'add_link · update_link · delete_link · bulk_add_links · reorder_links',
+  'add_category · update_category · delete_category · reorder_categories',
+]
+const mcpToolCount = 18
 const mcpClientConfig = computed(() =>
   JSON.stringify(
     {
@@ -324,6 +357,11 @@ const categoryIconOptions: { name: string; icon: Component }[] = [
   { name: 'FileText', icon: FileText },
   { name: 'Gamepad2', icon: Gamepad2 },
   { name: 'Globe', icon: Globe },
+  { name: 'Globe2', icon: Globe2 },
+  { name: 'Github', icon: Github },
+  { name: 'Slack', icon: Slack },
+  { name: 'Mail', icon: Mail },
+  { name: 'MessageCircle', icon: MessageCircle },
   { name: 'GraduationCap', icon: GraduationCap },
   { name: 'Grid2X2', icon: Grid2X2 },
   { name: 'Image', icon: Image },
@@ -341,7 +379,33 @@ const categoryIconOptions: { name: string; icon: Component }[] = [
   { name: 'TrendingUp', icon: TrendingUp },
   { name: 'Users', icon: Users },
   { name: 'Wrench', icon: Wrench },
+  { name: 'Heart', icon: Heart },
+  { name: 'Home', icon: Home },
+  { name: 'Rocket', icon: Rocket },
+  { name: 'Zap', icon: Zap },
+  { name: 'Banknote', icon: Banknote },
+  { name: 'Building2', icon: Building2 },
+  { name: 'Landmark', icon: Landmark },
+  { name: 'CreditCard', icon: CreditCard },
+  { name: 'Camera', icon: Camera },
+  { name: 'Car', icon: Car },
+  { name: 'Plane', icon: Plane },
+  { name: 'MapPin', icon: MapPin },
+  { name: 'Calendar', icon: Calendar },
+  { name: 'Clock', icon: Clock },
+  { name: 'Tv', icon: Tv },
+  { name: 'PieChart', icon: PieChart },
+  { name: 'Shield', icon: Shield },
+  { name: 'Cpu', icon: Cpu },
+  { name: 'Coffee', icon: Coffee },
+  { name: 'Stethoscope', icon: Stethoscope },
+  { name: 'Gift', icon: Gift },
 ]
+
+const categoryIconByName = new Map(categoryIconOptions.map(option => [option.name, option.icon]))
+function categoryIcon(name?: string): Component {
+  return categoryIconByName.get(name || 'Folder') || Folder
+}
 
 /** 可作为父级的分类（一级分类，即没有 parentId） */
 const parentCategoryOptions = computed(() => {
@@ -628,7 +692,7 @@ function formatSize(bytes: number) {
             <div v-if="topRows.length" class="category-sort-list">
               <template v-for="(parent, pIndex) in topRows" :key="parent.id">
                 <div class="category-sort-row" :class="{ 'has-children': childrenOf(parent.id).length }">
-                  <Folder :size="15" />
+                  <component :is="categoryIcon(parent.icon)" :size="15" />
                   <span class="category-sort-name">{{ parent.name }}</span>
                   <div class="category-sort-actions">
                     <button
@@ -670,7 +734,9 @@ function formatSize(bytes: number) {
                   :key="child.id"
                   class="category-sort-row is-child"
                 >
-                  <span class="child-branch"><Folder :size="15" /></span>
+                  <span class="child-branch"
+                    ><component :is="categoryIcon(child.icon)" :size="15"
+                  /></span>
                   <span class="category-sort-name">{{ child.name }}</span>
                   <div class="category-sort-actions">
                     <button :title="'编辑'" @click="openEditCategory(child)">
@@ -866,12 +932,14 @@ function formatSize(bytes: number) {
           >
             <h3><KeyRound :size="17" /> MCP / EdgeOne 部署</h3>
             <p class="settings-help">
-              仓库根目录的 `.mcp.json` 已配置 EdgeOne Pages Deploy MCP，可在支持 MCP
-              的客户端中直接部署和持续迭代。
+              这是 CloudNav 的远程 MCP 服务端（Streamable HTTP，协议
+              <code>2025-06-18</code>）。已提供 <b>{{ mcpToolCount }}</b> 个工具，
+              支持结构化的读取结果，接入后可由 AI 客户端直接读写你的导航数据。
             </p>
             <p class="settings-help mcp-server-help">
-              这是 CloudNav 的远程 MCP 服务端地址，可直接粘贴到支持 Streamable HTTP
-              的客户端。读取工具无需认证，写入工具请在配置中填入管理令牌。
+              只读工具（list_links、search_links、list_categories、get_stats、get_link、
+              get_category、list_recent_links）无需认证即可访问；写入工具需要携带管理令牌
+              （Authorization Bearer），get_config 仅在认证后才返回含密钥的配置。
             </p>
             <div class="mcp-command">
               <code>{{ mcpEndpoint }}</code
@@ -888,6 +956,12 @@ function formatSize(bytes: number) {
                 <Copy :size="14" />复制配置
               </button>
             </div>
+            <details class="mcp-tools-list">
+              <summary>查看可用工具清单</summary>
+              <ul>
+                <li v-for="tool in mcpTools" :key="tool">{{ tool }}</li>
+              </ul>
+            </details>
             <a
               class="mcp-link"
               href="https://edgeone.cloud.tencent.com/pages/document/173172415568367616"
@@ -1632,6 +1706,30 @@ html.dark .settings-footer .settings-secondary:hover {
   color: var(--c-primary);
   font-size: 12px;
   text-decoration: none;
+}
+
+.mcp-tools-list {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: var(--c-bg-soft);
+}
+.mcp-tools-list summary {
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.mcp-tools-list ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: var(--c-text-muted);
+}
+.mcp-tools-list li {
+  margin: 4px 0;
+  line-height: 1.5;
 }
 
 /* ===== Mobile: horizontal tab bar + stacked body ===== */
