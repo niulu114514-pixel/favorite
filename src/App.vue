@@ -70,7 +70,6 @@ import {
   Target,
   TrendingUp,
   Tv,
-  Upload,
   Users,
   Wifi,
   Wrench,
@@ -102,8 +101,19 @@ const authModalOpen = ref(false)
 const settingsOpen = ref(false)
 const hideTools = ref(localStorage.getItem('cloudnav_hide_tools') === '1')
 const editingLink = ref<Partial<LinkItem>>({})
-const iconUploading = ref(false)
 const iconError = ref('')
+// 编辑弹窗内实时预览该网址自身的 favicon（如图标被覆盖则优先显示自定义图标）
+const editingFaviconPreview = computed<string>(() => {
+  if (editingLink.value.icon) return editingLink.value.icon
+  const raw = editingLink.value.url?.trim() || ''
+  if (!raw) return ''
+  try {
+    const hostname = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`).hostname
+    return `/api/favicon?domain=${encodeURIComponent(hostname)}`
+  } catch {
+    return ''
+  }
+})
 const splashIconBroken = ref(false)
 const splashIconSrc = computed(() => nav.config.ai.faviconUrl || '/favicon.ico')
 const password = ref('')
@@ -492,43 +502,14 @@ function reorderCategoryLevel(draggedId: string, targetId: string) {
 
 function openLinkModal(link?: LinkItem) {
   editingLink.value = link ? { ...link } : { categoryId: nav.categories.value[0]?.id || 'common' }
-  iconUploading.value = false
   iconError.value = ''
   linkModalOpen.value = true
 }
 
 function openLinkModalForCategory(categoryId: string) {
   editingLink.value = { categoryId }
-  iconUploading.value = false
   iconError.value = ''
   linkModalOpen.value = true
-}
-
-/** 上传图标（文件或远程 URL）到 EdgeOne Blob，返回可用的图标地址 */
-async function uploadIcon(form: FormData) {
-  const response = await fetch('/api/upload', { method: 'POST', body: form })
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok || !data.url) throw new Error(data.error || '上传失败')
-  return data.url as string
-}
-
-async function onPickIconFile(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (!file) return
-  iconUploading.value = true
-  iconError.value = ''
-  const form = new FormData()
-  form.append('file', file)
-  form.append('categoryName', editingLink.value.categoryId || 'common')
-  try {
-    editingLink.value.icon = await uploadIcon(form)
-  } catch (e) {
-    iconError.value = e instanceof Error ? e.message : '上传失败'
-  } finally {
-    iconUploading.value = false
-  }
 }
 
 async function submitLink() {
@@ -1008,33 +989,22 @@ onBeforeUnmount(() => {
           <span class="field-label">图标</span>
           <div class="icon-picker">
             <img
-              v-if="editingLink.icon"
-              :src="editingLink.icon"
+              v-if="editingFaviconPreview"
+              :src="editingFaviconPreview"
               class="icon-preview"
               alt="图标预览"
               @error="(e) => (e.target as HTMLImageElement).src = ''"
             />
             <div v-else class="icon-preview icon-preview-empty"><Image :size="22" /></div>
-            <div class="icon-picker-actions">
-              <label class="secondary-button small">
-                <Upload :size="14" />{{ iconUploading ? '处理中…' : '上传图片' }}
-                <input
-                  type="file"
-                  accept="image/*"
-                  class="hidden-input"
-                  :disabled="iconUploading"
-                  @change="onPickIconFile"
-                />
-              </label>
-            </div>
+            <p class="icon-picker-hint">自动获取该网址自身的 favicon，输入网址即可实时预览。</p>
           </div>
           <input
             v-model="editingLink.icon"
             class="field-input"
-            placeholder="或直接粘贴图标 URL，留空自动获取网站 favicon"
+            placeholder="留空自动获取网站 favicon；也可粘贴自定义图标 URL 覆盖"
           />
           <span v-if="iconError" class="form-error">{{ iconError }}</span>
-          <p class="form-hint">不上传图标时，将自动使用该网址自身的 favicon。</p>
+          <p class="form-hint">自动从网站获取 favicon，并支持多来源智能回退，无需手动上传。</p>
         </div>
         <label
           >分类<select v-model="editingLink.categoryId">
@@ -1976,25 +1946,11 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   color: #94a0b4;
   border: 1px dashed #cdd4df;
 }
-.icon-picker-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.icon-picker-actions .secondary-button {
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.hidden-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  overflow: hidden;
-  pointer-events: none;
+.icon-picker-hint {
+  flex: 1;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8a94a6;
 }
 .form-hint {
   margin: 6px 0 0;

@@ -10,14 +10,18 @@ import {
 } from './_kvAdapter.js'
 
 const UPSTREAM_PROVIDERS = [
-  domain => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`,
-  domain => `https://www.faviconextractor.com/favicon/${encodeURIComponent(domain)}?larger=true`,
-  // 最后兜底：直接抓取目标网站自身的 favicon，确保能拿到该网址自己的图标而不退回本站默认
+  // 目标网站自身的经典 favicon（首选，保证拿到该网址自己的图标）
   domain => `https://${encodeURIComponent(domain)}/favicon.ico`,
+  // Google S2，覆盖面广、响应快
+  domain => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`,
+  // faviconextractor 最后兜底
+  domain => `https://www.faviconextractor.com/favicon/${encodeURIComponent(domain)}?larger=true`,
 ]
 
 const UPSTREAM_TIMEOUT_MS = 10_000
 const MAX_FAVICON_BYTES = 512 * 1024
+const PAGE_TIMEOUT_MS = 6000
+const MAX_PAGE_BYTES = 512 * 1024
 
 async function fetchUpstreamIcon(url) {
   const controller = new AbortController()
@@ -39,6 +43,61 @@ async function fetchUpstreamIcon(url) {
   } finally {
     clearTimeout(timer)
   }
+}
+
+function absoluteUrl(base, src) {
+  try {
+    return new URL(src, base).href
+  } catch {
+    return null
+  }
+}
+
+// 抓取目标网站首页 HTML，从 <link rel="icon"> / apple-touch-icon 中解析该网站自带的图标。
+// 这比直接猜 /favicon.ico 更准确，能拿到高分辨率的网站专属图标。
+async function scrapeSiteIcon(domain) {
+  const base = `https://${domain}/`
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS)
+  try {
+    const res = await fetch(base, {
+      headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html,*/*;q=0.5' },
+      redirect: 'follow',
+      signal: controller.signal,
+    })
+    if (!res.ok) return null
+    const declared = Number(res.headers.get('content-length') || 0)
+    if (declared > MAX_PAGE_BYTES) return null
+    const text = await res.text().catch(() => '')
+    if (!text || text.length > 1024 * 1024) return null
+
+    // 优先 apple-touch-icon（通常分辨率更高），其次 icon / shortcut icon（SVG 优先）
+    const candidates = []
+    const linkRe = /<link\b[^>]*>/gi
+    let m
+    while ((m = linkRe.exec(text)) && candidates.length < 8) {
+      const tag = m[0]
+      const hrefMatch = /href\s*=\s*["']([^"']+)["']/i.exec(tag)
+      if (!hrefMatch) continue
+      const rel = (/(?:rel|data-icon)\s*=\s*["'][^"']*["']/i.exec(tag) || [''])[0]?.toLowerCase() || ''
+      const isApple = rel.includes('apple-touch-icon')
+      const isSvg = rel.includes('icon') && tag.toLowerCase().includes('.svg')
+      const isIcon = rel.includes('icon')
+      if (!isIcon && !isApple) continue
+      const url = absoluteUrl(base, hrefMatch[1])
+      if (url) candidates.push({ url, score: isApple ? 3 : isSvg ? 2 : 1 })
+    }
+    candidates.sort((a, b) => b.score - a.score)
+    for (const { url } of candidates) {
+      const buffer = await fetchUpstreamIcon(url)
+      if (buffer) return buffer
+    }
+  } catch {
+    // ignore, fall through to providers
+  } finally {
+    clearTimeout(timer)
+  }
+  return null
 }
 
 function detectMimeType(arrayBuffer) {
@@ -192,11 +251,19 @@ export async function onRequest(context) {
   }
 
   let buffer = null
-  for (const getUrl of UPSTREAM_PROVIDERS) {
-    const candidate = await fetchUpstreamIcon(getUrl(domain))
-    if (candidate) {
-      buffer = candidate
-      break
+  // 第 1 步：从网站首页 HTML 中解析其自带的专属图标（最精准的“自身图标”）
+  const scraped = await scrapeSiteIcon(domain)
+  if (scraped) {
+    buffer = scraped
+  }
+  // 第 2 步：多来源回退（站点 /favicon.ico → Google S2 → faviconextractor）
+  if (!buffer) {
+    for (const getUrl of UPSTREAM_PROVIDERS) {
+      const candidate = await fetchUpstreamIcon(getUrl(domain))
+      if (candidate) {
+        buffer = candidate
+        break
+      }
     }
   }
 
