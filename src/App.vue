@@ -609,6 +609,7 @@ onBeforeUnmount(() => {
         ><button class="icon-button mobile-only" @click="sidebarOpen = false"><X /></button>
       </div>
       <nav class="category-nav">
+        <div class="category-section-label">分类目录</div>
         <template v-for="category in topLevelCategories" :key="category.id">
           <div class="category-nav-item">
             <button
@@ -1033,11 +1034,13 @@ onBeforeUnmount(() => {
 <style scoped>
 .app-shell {
   min-height: 100vh;
-  background: #f6f8fb;
+  background: #eef1f9;
   color: #182230;
   background-image:
-    radial-gradient(circle at 12% 4%, rgba(113, 145, 255, 0.18), transparent 28%),
-    radial-gradient(circle at 88% 18%, rgba(193, 130, 255, 0.14), transparent 24%);
+    radial-gradient(circle at 8% 6%, rgba(127, 156, 255, 0.34), transparent 34%),
+    radial-gradient(circle at 30% 110%, rgba(182, 140, 255, 0.28), transparent 42%),
+    radial-gradient(circle at 88% 12%, rgba(255, 176, 190, 0.22), transparent 30%),
+    linear-gradient(160deg, #eef2ff 0%, #f5f0ff 48%, #eaf1fb 100%);
 }
 /* ===== 首开整页品牌过渡 ===== */
 .brand-splash {
@@ -1210,11 +1213,14 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   position: fixed;
   inset: 0 auto 0 0;
   width: 250px;
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(246, 249, 255, 0.86));
-  border-right: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.52);
+  backdrop-filter: blur(22px) saturate(1.7);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7);
+  border-right: 1px solid rgba(255, 255, 255, 0.55);
   box-shadow:
-    12px 0 38px rgba(48, 65, 104, 0.1),
-    inset -1px 0 rgba(255, 255, 255, 0.38);
+    2px 0 24px rgba(58, 78, 122, 0.08),
+    12px 0 38px rgba(48, 65, 104, 0.08),
+    inset -1px 0 rgba(255, 255, 255, 0.32);
   display: flex;
   flex-direction: column;
   z-index: 40;
@@ -1268,12 +1274,27 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
 .brand strong {
   font-size: 17px;
   flex: 1;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  background: linear-gradient(120deg, #6a5cff 0%, #a94fe8 55%, #ec4d9c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 .category-nav {
-  padding: 16px 10px;
+  padding: 12px 10px;
   overflow: auto;
   flex: 1;
   overscroll-behavior: contain;
+}
+.category-section-label {
+  margin: 2px 10px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(74, 85, 104, 0.6);
 }
 .category-nav-item {
   display: flex;
@@ -1305,17 +1326,17 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
 }
 .category-nav button:hover,
 .sidebar-footer button:hover {
-  background: rgba(255, 255, 255, 0.58);
-  border-color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.7);
   color: #315ed5;
-  box-shadow: 0 5px 15px rgba(63, 84, 133, 0.09);
+  box-shadow: 0 5px 15px rgba(63, 84, 133, 0.08);
   transform: translateX(2px);
 }
 .category-nav button.active {
-  background: rgba(255, 255, 255, 0.62);
-  border-color: rgba(123, 156, 255, 0.42);
-  color: #315ed5;
-  box-shadow: 0 6px 18px rgba(63, 84, 133, 0.12);
+  background: linear-gradient(120deg, rgba(107, 95, 255, 0.16), rgba(210, 90, 230, 0.12));
+  border-color: rgba(122, 102, 255, 0.32);
+  color: #5b4bff;
+  box-shadow: 0 6px 18px rgba(80, 70, 180, 0.1);
 }
 .category-nav button > span.category-name {
   flex: 1 1 auto;
@@ -2057,11 +2078,16 @@ html.dark .app-shell {
     radial-gradient(circle at 88% 18%, rgba(135, 78, 174, 0.18), transparent 26%);
 }
 html.dark .sidebar {
-  background: linear-gradient(155deg, rgba(33, 42, 55, 0.94), rgba(24, 31, 41, 0.9));
-  border-color: rgba(172, 194, 230, 0.16);
+  background: rgba(24, 31, 41, 0.55);
+  backdrop-filter: blur(22px) saturate(1.2);
+  -webkit-backdrop-filter: blur(22px) saturate(1.2);
+  border-color: rgba(172, 194, 230, 0.14);
   box-shadow:
-    12px 0 42px rgba(0, 0, 0, 0.25),
-    inset -1px 0 rgba(255, 255, 255, 0.06);
+    2px 0 24px rgba(0, 0, 0, 0.18),
+    inset -1px 0 rgba(255, 255, 255, 0.05);
+}
+html.dark .category-section-label {
+  color: rgba(190, 200, 216, 0.5);
 }
 html.dark .sidebar::before {
   background: rgba(71, 105, 204, 0.2);
