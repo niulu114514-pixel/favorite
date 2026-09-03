@@ -137,6 +137,8 @@ export function useCloudNav() {
       console.info('Cloud data is unavailable; using the local cache.', error)
     } finally {
       loading.value = false
+      // 数据就绪后为 MCP 等未带图标、或历史遗留 emoji 图标的链接回填真实 favicon。
+      void backfillLinkIcons()
     }
   }
 
@@ -314,9 +316,43 @@ export function useCloudNav() {
     }
   }
 
-  async function removeLink(id: string) {
+ async function removeLink(id: string) {
     links.value = links.value.filter(item => item.id !== id)
     await persist()
+  }
+
+  let iconBackfillStarted = false
+  function isValidLinkIcon(icon: unknown): boolean {
+    return (
+      typeof icon === 'string' &&
+      !!icon &&
+      (/^(https?:)?\/\//i.test(icon) || icon.startsWith('/') || icon.startsWith('data:image'))
+    )
+  }
+
+  // MCP / 后端直接建链时 Link 不会带 icon 字段；历史遗留的 emoji 图标也因非 URL 而失效。
+  // 数据加载后统一为这些链接回填真实 favicon 地址，使其与通过前端添加快捷方式一致：
+  // 图标被持久化，而不再仅仅依赖运行时 /api/favicon 回退。
+  async function backfillLinkIcons(): Promise<void> {
+    if (iconBackfillStarted || !links.value.length) return
+    iconBackfillStarted = true
+    let changed = false
+    for (const link of links.value) {
+      if (isValidLinkIcon(link.icon)) continue
+      try {
+        const icon = await getIconUrl(link.url, config.icon)
+        if (icon && icon !== link.icon) {
+          link.icon = icon
+          changed = true
+        }
+      } catch {
+        // 获取失败时保留原值，渲染期仍走运行时 favicon 回退。
+      }
+    }
+    if (changed) {
+      saveLocal()
+      persist()
+    }
   }
 
   async function togglePin(id: string) {
