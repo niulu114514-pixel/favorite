@@ -744,7 +744,10 @@ onBeforeUnmount(() => {
                   :class="{ expanded: isCategoryExpanded(category.id) }" /></span
               >
             </button>
-            <div v-if="sidebarCollapsed" class="flyout">
+            <div
+              v-if="sidebarCollapsed && categoryChildren(category.id).length"
+              class="flyout"
+            >
               <div class="flyout-title">
                 <template v-if="isEmojiIcon(category.icon)">
                   <span class="emoji-icon">{{ category.icon }}</span>
@@ -756,30 +759,20 @@ onBeforeUnmount(() => {
                 />
                 <span class="flyout-name">{{ category.name }}</span>
               </div>
-              <template v-if="categoryChildren(category.id).length">
-                <button
-                  v-for="child in categoryChildren(category.id)"
-                  :key="child.id"
-                  type="button"
-                  class="flyout-item"
-                  :data-sort-category="child.id"
-                  @click="jumpTo(child.id)"
-                >
-                  <template v-if="isEmojiIcon(child.icon)">
-                    <span class="emoji-icon">{{ child.icon }}</span>
-                  </template>
-                  <component v-else :is="getCategoryIcon(child.icon)" :size="14" />
-                  <span>{{ child.name }}</span>
-                  <span class="flyout-count">{{ categoryCount(child) }}</span>
-                </button>
-              </template>
               <button
-                v-else
+                v-for="child in categoryChildren(category.id)"
+                :key="child.id"
                 type="button"
                 class="flyout-item"
-                @click="handleCategoryClick($event, category)"
+                :data-sort-category="child.id"
+                @click="jumpTo(child.id)"
               >
-                <span>进入该分类</span>
+                <template v-if="isEmojiIcon(child.icon)">
+                  <span class="emoji-icon">{{ child.icon }}</span>
+                </template>
+                <component v-else :is="getCategoryIcon(child.icon)" :size="14" />
+                <span>{{ child.name }}</span>
+                <span class="flyout-count">{{ categoryCount(child) }}</span>
               </button>
             </div>
           </div>
