@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Folder,
   FolderPlus,
+  Image,
   KeyRound,
   Palette,
   Pencil,
@@ -23,11 +24,13 @@ import {
 } from 'lucide-vue-next'
 import type {
   AIConfig,
+  BackgroundConfig,
   Category,
   IconConfig,
   WebDavBackupItem,
   WebDavConfig,
 } from '../../types'
+import { DEFAULT_BACKGROUND_CONFIG } from '../../types'
 import { DEFAULT_ICON_CONFIG } from '../services/iconService'
 import { generateLinkDescription } from '../services/aiService'
 
@@ -35,6 +38,7 @@ type SettingsDraft = {
   ai: AIConfig
   icon: IconConfig
   webdav: WebDavConfig
+  background: BackgroundConfig
   websiteTitle: string
   navigationName: string
   showPinned: boolean
@@ -66,6 +70,7 @@ const settingsContent = ref<HTMLElement>()
 const activeSection = ref('appearance')
 const settingsTabs = [
   { id: 'appearance', label: '外观与视图', icon: Palette },
+  { id: 'background', label: '随机背景', icon: Image },
   { id: 'categories', label: '分类排序', icon: Folder },
   { id: 'icons', label: '图标获取', icon: ExternalLink },
   { id: 'ai', label: 'AI 助手', icon: Sparkles },
@@ -96,6 +101,7 @@ function createDraft(source: SettingsDraft): SettingsDraft {
     },
     icon: { ...DEFAULT_ICON_CONFIG, ...source.icon },
     webdav: { url: '', username: '', password: '', enabled: false, ...source.webdav },
+    background: { ...DEFAULT_BACKGROUND_CONFIG, ...source.background },
     websiteTitle: source.websiteTitle || source.ai.websiteTitle || '',
     navigationName: source.navigationName || source.ai.navigationName || '',
     showPinned: source.showPinned,
@@ -114,8 +120,30 @@ watch(
     backups.value = []
     webdavBackupsLoaded.value = false
     categoryModalOpen.value = false
+    bgPreviewUrl.value = ''
   }
 )
+
+// ===== 随机背景预览 =====
+const bgPreviewUrl = ref('')
+
+function buildBgPreviewUrl() {
+  let url =
+    draft.background.source === 'custom' && draft.background.customUrl?.trim()
+      ? draft.background.customUrl.trim()
+      : draft.background.apiUrl.trim()
+  if (draft.background.source === 'loli' && draft.background.id && /^\d{1,6}$/.test(draft.background.id)) {
+    url += url.includes('?') ? '&' : '?'
+    url += 'id=' + draft.background.id
+  }
+  url += url.includes('?') ? '&' : '?'
+  url += 't=' + Date.now()
+  return url
+}
+
+function previewBg() {
+  bgPreviewUrl.value = buildBgPreviewUrl()
+}
 
 async function save() {
   saving.value = true
@@ -126,6 +154,7 @@ async function save() {
       ai,
       icon: draft.icon,
       webdav: draft.webdav,
+      background: draft.background,
       ui: { showPinnedWebsites: draft.showPinned },
       view: { defaultMode: draft.defaultViewMode },
     })
@@ -410,6 +439,90 @@ function formatSize(bytes: number) {
               <label class="settings-check"
                 ><input v-model="draft.showPinned" type="checkbox" />显示置顶区域</label
               >
+            </div>
+          </section>
+
+          <section
+            id="settings-background"
+            v-if="activeSection === 'background'"
+            class="settings-section settings-card"
+          >
+            <h3><Image :size="17" /> 随机背景图片</h3>
+            <p class="settings-help">
+              可将站点背景替换为随机二次元图片（默认接入
+              LoliApi），访问时会返回适合当前设备的图片。启用后在管理端出现，访客同样生效。
+            </p>
+            <label class="settings-check"
+              ><input v-model="draft.background.enabled" type="checkbox" />启用随机背景</label
+            >
+            <div class="settings-grid">
+              <label
+                >图片来源<select v-model="draft.background.source">
+                  <option value="loli">LoliApi（二次元随机图）</option>
+                  <option value="custom">自定义图片</option>
+                </select></label
+              >
+              <label v-if="draft.background.source === 'loli'"
+                >LoliApi 地址<input v-model="draft.background.apiUrl" placeholder="https://www.loliapi.com/acg/"
+              /></label>
+              <label v-else
+                >图片 URL<input
+                  v-model="draft.background.customUrl"
+                  placeholder="https://example.com/random.jpg"
+              /></label>
+            </div>
+            <div class="settings-grid">
+              <label v-if="draft.background.source === 'loli'"
+                >指定图片 id（可选）<input v-model="draft.background.id" placeholder="留空则随机" /></label
+              ><label
+                >自动轮换（分钟）<input
+                  v-model.number="draft.background.autoRefreshMin"
+                  type="number"
+                  min="0"
+                  max="1440"
+                  placeholder="0 = 不自动轮换"
+              /></label>
+            </div>
+            <div class="settings-grid">
+              <label class="settings-range"
+                >暗色遮罩
+                <input
+                  v-model.number="draft.background.overlay"
+                  type="range"
+                  min="0"
+                  max="0.85"
+                  step="0.05"
+                /><span>{{ Math.round(draft.background.overlay * 100) }}%</span></label
+              >
+              <label class="settings-range"
+                >模糊
+                <input
+                  v-model.number="draft.background.blur"
+                  type="range"
+                  min="0"
+                  max="24"
+                  step="1"
+                /><span>{{ draft.background.blur }}px</span></label
+              >
+            </div>
+            <div class="settings-inline no-gap">
+              <button class="settings-secondary" @click="previewBg">
+                <Image :size="15" />预览 / 换一张
+              </button>
+              <span v-if="bgPreviewUrl" class="bg-preview-hint">预览仅本地查看，保存后站点生效。</span>
+            </div>
+            <div v-if="bgPreviewUrl" class="bg-preview" :style="{ backgroundColor: '#0e1520' }">
+              <img
+                :src="bgPreviewUrl"
+                alt="随机背景预览"
+                loading="lazy"
+                style="
+                  width: 100%;
+                  height: 100%;
+                  object-fit: cover;
+                  object-position: center;
+                "
+              />
             </div>
           </section>
 
@@ -984,6 +1097,36 @@ html.dark .settings-backdrop {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 13px;
+}
+.settings-range {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+}
+.settings-range input[type='range'] {
+  margin-top: 0;
+  flex: 1;
+  accent-color: var(--c-primary);
+}
+.settings-range span {
+  width: 44px;
+  color: var(--c-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+  flex: 0 0 auto;
+}
+.bg-preview {
+  position: relative;
+  margin-top: 12px;
+  height: 180px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--c-card-shadow);
+}
+.bg-preview-hint {
+  font-size: 12px;
+  color: var(--c-faint);
 }
 .settings-check {
   display: flex !important;

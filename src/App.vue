@@ -25,6 +25,7 @@ import {
 } from 'lucide-vue-next'
 import type { Category, LinkItem } from '../types'
 import { useCloudNav } from './composables/useCloudNav'
+import { useRandomBackground } from './composables/useRandomBackground'
 import SettingsPanel from './components/SettingsPanel.vue'
 import LinkGrid from './components/LinkGrid.vue'
 import { favicon, handleFaviconError } from './composables/useFavicon'
@@ -32,6 +33,7 @@ import { safeTargetUrl } from './utils/url'
 import { generateLinkDescription, suggestCategory } from './services/aiService'
 
 const nav = useCloudNav()
+const background = useRandomBackground()
 const searchQuery = ref('')
 const externalSearch = ref(false)
 const sidebarOpen = ref(false)
@@ -466,6 +468,7 @@ function onSettingsSaved(settings: {
   ai: typeof nav.config.ai
   icon: typeof nav.config.icon
   webdav: typeof nav.config.webdav
+  background: typeof nav.config.background
   websiteTitle: string
   navigationName: string
   showPinned: boolean
@@ -474,6 +477,7 @@ function onSettingsSaved(settings: {
   Object.assign(nav.config.ai, settings.ai)
   Object.assign(nav.config.icon, settings.icon)
   Object.assign(nav.config.webdav, settings.webdav)
+  Object.assign(nav.config.background, settings.background)
   nav.config.title = settings.websiteTitle || nav.config.title
   nav.config.navigationName = settings.navigationName
   nav.config.showPinned = settings.showPinned
@@ -489,9 +493,31 @@ function handleGlobalKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') searchQuery.value = ''
 }
 
+/** 随机背景层的图片样式（含模糊） */
+const bgStyle = computed(() => {
+  if (!background.imageUrl.value) return {}
+  const blur = Number(nav.config.background.blur) || 0
+  return {
+    backgroundImage: `url("${background.imageUrl.value}")`,
+    filter: blur > 0 ? `blur(${blur}px)` : undefined,
+  }
+})
+
+/** 暗色遮罩，保证前景可读 */
+const bgOverlayColor = computed(
+  () => `rgba(18, 27, 42, ${Math.min(0.85, Math.max(0, Number(nav.config.background.overlay) || 0))})`
+)
+
+watch(
+  () => JSON.parse(JSON.stringify(nav.config.background)),
+  cfg => background.apply(cfg),
+  { deep: true }
+)
+
 onMounted(async () => {
   applyTheme()
   await nav.init()
+  background.apply(nav.config.background)
   if (!hasSavedViewMode) compact.value = nav.config.defaultViewMode === 'compact'
   const params = new URLSearchParams(location.search)
   const addUrl = params.get('add_url')
@@ -506,11 +532,16 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
   cancelCategoryDragSession()
+  background.stopAuto()
 })
 </script>
 
 <template>
   <div class="app-shell">
+    <div v-if="background.imageUrl.value" class="bg-layer">
+      <div class="bg-image" :style="bgStyle" />
+      <div class="bg-overlay" :style="{ background: bgOverlayColor }" />
+    </div>
     <div v-if="sidebarOpen" class="sidebar-mask" @click="sidebarOpen = false" />
     <aside class="sidebar" :class="{ open: sidebarOpen }">
       <div class="brand">
@@ -925,6 +956,7 @@ onBeforeUnmount(() => {
         ai: nav.config.ai,
         icon: nav.config.icon,
         webdav: nav.config.webdav,
+        background: nav.config.background,
         websiteTitle: nav.config.title,
         navigationName: nav.config.navigationName,
         showPinned: nav.config.showPinned,
@@ -952,6 +984,26 @@ onBeforeUnmount(() => {
   background-image:
     radial-gradient(circle at 12% 4%, rgba(113, 145, 255, 0.18), transparent 28%),
     radial-gradient(circle at 88% 18%, rgba(193, 130, 255, 0.14), transparent 24%);
+}
+/* ===== 随机背景层 ===== */
+.bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #f6f8fb;
+}
+.bg-image {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  transform: scale(1.06); /* 放大以隐藏模糊产生的边缘空白 */
+}
+.bg-overlay {
+  position: absolute;
+  inset: 0;
 }
 .sidebar {
   position: fixed;
@@ -1134,6 +1186,8 @@ onBeforeUnmount(() => {
 .main-area {
   margin-left: 250px;
   min-height: 100vh;
+  position: relative;
+  z-index: 1;
 }
 .header {
   height: 68px;

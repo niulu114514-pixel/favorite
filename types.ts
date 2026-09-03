@@ -176,6 +176,36 @@ export interface WeatherConfig {
   unit?: 'celsius' | 'fahrenheit';
 }
 
+// 随机背景图片来源类型
+export type BackgroundSource = 'loli' | 'custom';
+
+// 随机背景配置
+export interface BackgroundConfig {
+  enabled: boolean;
+  source: BackgroundSource;
+  // LoliApi 图片地址（source 为 loli 时使用）
+  apiUrl: string;
+  // LoliApi 可选：指定图片 id
+  id?: string;
+  // 自定义图片直链或随机图接口（source 为 custom 时使用）
+  customUrl?: string;
+  // 自动轮换间隔（分钟），0 表示不自动轮换，仅在重新进入时换图
+  autoRefreshMin: number;
+  // 暗色遮罩不透明度（0-1），保证前景文字可读
+  overlay: number;
+  // 背景模糊程度（px，0-24）
+  blur: number;
+}
+
+export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
+  enabled: false,
+  source: 'loli',
+  apiUrl: 'https://www.loliapi.com/acg/',
+  autoRefreshMin: 0,
+  overlay: 0.3,
+  blur: 0,
+};
+
 // 完全统一的应用配置（包含所有配置）
 export interface AppConfig {
   // AI 配置
@@ -198,6 +228,9 @@ export interface AppConfig {
 
   // 图标配置
   icon?: IconConfig;
+
+  // 随机背景配置
+  background?: BackgroundConfig;
 
   // 视图配置
   view?: {

@@ -2,6 +2,8 @@ import { computed, reactive, ref } from 'vue'
 import type { Category, LinkItem } from '../../types'
 import { DEFAULT_CATEGORIES, INITIAL_LINKS } from '../../types'
 import type { AIConfig, IconConfig, WebDavConfig } from '../../types'
+import { DEFAULT_BACKGROUND_CONFIG } from '../../types'
+import type { BackgroundConfig } from '../../types'
 import { DEFAULT_ICON_CONFIG, getIconUrl } from '../services/iconService'
 
 const DATA_KEY = 'cloudnav_data_cache'
@@ -50,6 +52,7 @@ export function useCloudNav() {
       password: '',
       enabled: false,
     } as WebDavConfig,
+    background: { ...DEFAULT_BACKGROUND_CONFIG } as BackgroundConfig,
   })
 
   function normalize(data: { links?: LinkItem[]; categories?: Category[] }) {
@@ -131,6 +134,7 @@ export function useCloudNav() {
     Object.assign(config.ai, ai)
     Object.assign(config.icon, icon)
     Object.assign(config.webdav, webdav)
+    Object.assign(config.background, { ...DEFAULT_BACKGROUND_CONFIG, ...(loaded.background || {}) })
     config.title = ai.websiteTitle || config.title
     config.navigationName = ai.navigationName || config.navigationName
     config.defaultViewMode = view.defaultMode || config.defaultViewMode

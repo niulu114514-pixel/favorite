@@ -21,6 +21,7 @@ const CONFIG_SECTIONS = [
   'view',
   'ui',
   'webdav',
+  'background',
 ]
 
 function requestCredential(request) {

@@ -24,6 +24,7 @@ const CONFIG_SECTIONS = [
   'view',
   'ui',
   'webdav',
+  'background',
 ];
 
 const TOOLS = [
