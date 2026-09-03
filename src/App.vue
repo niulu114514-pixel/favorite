@@ -14,14 +14,12 @@ import {
   Menu,
   Moon,
   PanelLeft,
-  Pencil,
   Plus,
   Search,
   Settings,
   Star,
   Sparkles,
   Sun,
-  Trash2,
   X,
 } from 'lucide-vue-next'
 import type { Category, LinkItem } from '../types'
@@ -45,11 +43,9 @@ const hasSavedViewMode = savedViewMode === 'compact' || savedViewMode === 'detai
 const compact = ref(savedViewMode === 'compact')
 const linkModalOpen = ref(false)
 const authModalOpen = ref(false)
-const categoryModalOpen = ref(false)
 const settingsOpen = ref(false)
 const hideTools = ref(localStorage.getItem('cloudnav_hide_tools') === '1')
 const editingLink = ref<Partial<LinkItem>>({})
-const editingCategory = ref<Partial<Category>>({})
 const password = ref('')
 const authError = ref('')
 const showPassword = ref(false)
@@ -414,12 +410,6 @@ async function deleteLink(link: LinkItem) {
   if (confirm(`确定删除“${link.title}”吗？`)) await nav.removeLink(link.id)
 }
 
-async function deleteCategory(category: Category) {
-  if (window.confirm(`删除“${category.name}”？该分类的网站将移到常用推荐。`)) {
-    await nav.removeCategory(category.id)
-  }
-}
-
 async function submitLogin() {
   if (loggingIn.value) return
   authError.value = ''
@@ -434,23 +424,6 @@ async function submitLogin() {
   } finally {
     loggingIn.value = false
   }
-}
-
-function openCategoryModal(category?: Category) {
-  editingCategory.value = category ? { ...category } : { name: '', icon: 'Folder', parentId: '' }
-  categoryModalOpen.value = true
-}
-
-async function submitCategory() {
-  if (!editingCategory.value.name?.trim()) return
-  const parentId = editingCategory.value.parentId || undefined
-  await nav.saveCategory({
-    ...editingCategory.value,
-    name: editingCategory.value.name.trim(),
-    parentId,
-    isSubcategory: Boolean(parentId),
-  })
-  categoryModalOpen.value = false
 }
 
 /** 生成 WebDAV 备份数据 */
@@ -789,23 +762,6 @@ onBeforeUnmount(() => {
                   <Folder :size="20" /> {{ category.name }}
                   <span>{{ categoryCount(category) }}</span>
                 </h2>
-                <div v-if="nav.token.value" class="section-actions">
-                  <button
-                    class="icon-button small"
-                    title="编辑分类"
-                    @click="openCategoryModal(category)"
-                  >
-                    <Pencil />
-                  </button>
-                  <button
-                    v-if="category.id !== 'common'"
-                    class="icon-button small danger"
-                    title="删除分类"
-                    @click="deleteCategory(category)"
-                  >
-                    <Trash2 />
-                  </button>
-                </div>
               </div>
               <LinkGrid
                 v-if="categoryLinks(category.id).length"
@@ -928,46 +884,6 @@ onBeforeUnmount(() => {
         <button class="primary-button full-button" :disabled="loggingIn" type="submit">
           <LogIn :size="17" />{{ loggingIn ? '登录中…' : '登录' }}
         </button>
-      </form>
-    </div>
-
-    <div v-if="categoryModalOpen" class="modal-backdrop" @click.self="categoryModalOpen = false">
-      <form class="modal small-modal" @submit.prevent="submitCategory">
-        <div class="modal-title">
-          <div>
-            <h2>{{ editingCategory.id ? '编辑分类' : '新建分类' }}</h2>
-            <p>分类会显示在侧栏和首页。</p>
-          </div>
-          <button type="button" class="icon-button" @click="categoryModalOpen = false">
-            <X />
-          </button>
-        </div>
-        <label
-          >分类名称<input
-            v-model="editingCategory.name"
-            required
-            maxlength="40"
-            placeholder="例如：开发工具"
-        /></label>
-        <label>
-          上级分类
-          <select v-model="editingCategory.parentId">
-            <option value="">一级分类（顶层）</option>
-            <option
-              v-for="parent in topLevelCategories.filter(item => item.id !== editingCategory.id)"
-              :key="parent.id"
-              :value="parent.id"
-            >
-              二级分类 · {{ parent.name }}
-            </option>
-          </select>
-        </label>
-        <p class="modal-help">支持两级分类；二级分类会缩进显示在侧栏中。</p>
-        <div class="modal-actions">
-          <button type="button" class="secondary-button" @click="categoryModalOpen = false">
-            取消</button
-          ><button class="primary-button"><Check :size="17" />保存</button>
-        </div>
       </form>
     </div>
 

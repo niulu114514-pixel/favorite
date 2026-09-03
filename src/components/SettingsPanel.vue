@@ -1282,7 +1282,8 @@ html.dark .settings-secondary {
 }
 /* ===== 分类新建/编辑弹窗 ===== */
 .category-modal-wrap {
-  z-index: 60;
+  /* 必须高于设置面板（.settings-backdrop 为 100），否则分类弹窗会叠在设置弹窗下方无法点击 */
+  z-index: 120;
 }
 .category-modal {
   width: min(92vw, 420px);
