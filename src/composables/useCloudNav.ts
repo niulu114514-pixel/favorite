@@ -103,10 +103,13 @@ export function useCloudNav() {
   }
 
   async function init() {
+    // 有本地缓存时立即渲染；首次打开（无缓存）时仍保持加载骨架屏，
+    // 直到云端数据就绪，避免把稀疏的默认数据当成最终页面而显得“加载了一半”。
+    const hasLocalCache = Boolean(localStorage.getItem(DATA_KEY))
     const local = loadLocal()
     links.value = local.links
     categories.value = local.categories
-    loading.value = false
+    loading.value = !hasLocalCache
     try {
       const [dataResponse, configResponse, authResponse] = await Promise.all([
         fetchWithTimeout('/api/storage?getConfig=true&readOnly=true'),
