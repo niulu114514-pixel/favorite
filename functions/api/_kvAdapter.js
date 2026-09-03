@@ -1,11 +1,17 @@
 // EdgeOne Pages KV 适配层
 
 /**
- * 获取 EdgeOne Days KV 实例（作为全局变量注入）
- * @param {object} env - 函数 context.env
+ * 获取 EdgeOne Pages KV 实例
+ * 优先从 context.env 读取绑定，其次回退到全局变量
+ * @param {object} [env] - 函数 context.env
  * @returns {object} KV 实例
  */
-export function getKV() {
+export function getKV(env) {
+  // 优先从 context.env 获取（EdgeOne Pages 标准方式）
+  if (env && env.CLOUDNAV_KV && typeof env.CLOUDNAV_KV.get === 'function') {
+    return env.CLOUDNAV_KV;
+  }
+  // 回退到全局变量注入
   if (typeof CLOUDNAV_KV !== 'undefined' && typeof CLOUDNAV_KV.get === 'function') {
     return CLOUDNAV_KV;
   }
