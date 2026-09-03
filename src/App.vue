@@ -1,27 +1,54 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { Component } from 'vue'
 import {
   Bookmark,
+  BookOpen,
+  Box,
+  Briefcase,
   Check,
   ChevronRight,
+  Clapperboard,
+  Cloud,
+  Code,
+  Compass,
+  Database,
+  Dumbbell,
   Eye,
   EyeOff,
+  FileText,
   Folder,
+  Gamepad2,
+  Globe,
+  GraduationCap,
   Grid2X2,
+  Image,
+  Layers,
   LayoutList,
   LogIn,
   LogOut,
   Menu,
   Moon,
+  Music,
+  Newspaper,
+  Palette,
   PanelLeft,
+  PenTool,
   Plus,
   Search,
+  Server,
   Settings,
-  Star,
+  ShoppingBag,
+  ShoppingCart,
   Sparkles,
+  Star,
   Sun,
+  Target,
+  TrendingUp,
   Upload,
-  Image,
+  Users,
+  Wifi,
+  Wrench,
   X,
 } from 'lucide-vue-next'
 import type { Category, LinkItem } from '../types'
@@ -212,6 +239,48 @@ function toggleView() {
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
   localStorage.setItem('cloudnav_sidebar_collapsed', sidebarCollapsed.value ? '1' : '0')
+}
+
+/** 分类专属图标：根据分类 icon 字段渲染对应 Lucide 图标，未匹配时回退到文件夹。 */
+const CATEGORY_ICON_MAP: Record<string, Component> = {
+  Bookmark,
+  BookOpen,
+  Box,
+  Briefcase,
+  Clapperboard,
+  Cloud,
+  Code,
+  Compass,
+  Database,
+  Dumbbell,
+  FileText,
+  Folder,
+  Gamepad2,
+  Globe,
+  GraduationCap,
+  Grid2X2,
+  Image,
+  Layers,
+  LayoutList,
+  Music,
+  Newspaper,
+  Palette,
+  PenTool,
+  Server,
+  Settings,
+  ShoppingBag,
+  ShoppingCart,
+  Sparkles,
+  Star,
+  Target,
+  TrendingUp,
+  Users,
+  Wifi,
+  Wrench,
+}
+
+function getCategoryIcon(name?: string): Component {
+  return (name && CATEGORY_ICON_MAP[name]) || Folder
 }
 
 function toggleHideTools() {
@@ -604,15 +673,19 @@ onBeforeUnmount(() => {
     <div v-if="sidebarOpen" class="sidebar-mask" @click="sidebarOpen = false" />
     <aside class="sidebar" :class="{ open: sidebarOpen, collapsed: sidebarCollapsed }">
       <div class="brand">
-        <div class="brand-mark"><Bookmark :size="20" /></div>
-        <strong>{{ nav.config.navigationName }}</strong
-        ><button class="icon-button mobile-only" @click="sidebarOpen = false"><X /></button
-        ><button
-          class="icon-button desktop-only sidebar-collapse-toggle"
+        <div
+          class="brand-mark"
+          role="button"
+          tabindex="0"
           :aria-label="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
           :aria-pressed="!sidebarCollapsed"
+          :title="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
           @click="toggleSidebar"
-        ><PanelLeft :size="15" /></button>
+          @keydown.enter.prevent="toggleSidebar"
+          @keydown.space.prevent="toggleSidebar"
+        ><Bookmark :size="20" /></div>
+        <strong>{{ nav.config.navigationName }}</strong
+        ><button class="icon-button mobile-only" @click="sidebarOpen = false"><X /></button>
       </div>
       <nav class="category-nav">
         <div class="category-section-label">分类目录</div>
@@ -640,7 +713,9 @@ onBeforeUnmount(() => {
               @pointercancel="cancelCategoryPress"
               @click="handleCategoryClick($event, category)"
             >
-              <Folder :size="17" /><span class="category-name">{{ category.name }}</span
+              <component :is="getCategoryIcon(category.icon)" :size="17" /><span
+                class="category-name"
+                >{{ category.name }}</span
               ><span class="category-count">{{ categoryCount(category) }}</span
               ><span
                 v-if="categoryChildren(category.id).length"
@@ -680,7 +755,8 @@ onBeforeUnmount(() => {
                 @pointercancel="cancelCategoryPress"
                 @click="jumpTo(child.id)"
               >
-                <Folder :size="16" /><span>{{ child.name }}</span
+                <component :is="getCategoryIcon(child.icon)" :size="16" /><span
+                  >{{ child.name }}</span
                 ><span class="category-count">{{ categoryCount(child) }}</span
                 ><ChevronRight :size="15" />
               </button>
@@ -1280,6 +1356,12 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   display: grid;
   place-items: center;
   box-shadow: 0 7px 18px rgba(79, 124, 255, 0.3);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.brand-mark:hover {
+  transform: scale(1.05);
+  box-shadow: 0 8px 20px rgba(79, 124, 255, 0.42);
 }
 .brand strong {
   font-size: 17px;
