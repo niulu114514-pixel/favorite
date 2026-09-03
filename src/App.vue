@@ -1066,6 +1066,9 @@ onBeforeUnmount(() => {
 }
 .category-nav button span {
   flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .category-nav button.subcategory {
   margin-left: 14px;
