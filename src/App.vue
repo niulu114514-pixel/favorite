@@ -545,6 +545,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="app-shell" :class="{ 'has-bg': Boolean(background.imageUrl.value) }">
+    <Transition name="splash">
+      <div v-if="nav.loading.value" class="brand-splash" aria-busy="true">
+        <div class="splash-mark"><Bookmark :size="34" /></div>
+        <strong class="splash-name">{{ nav.config.navigationName || 'CloudNav' }}</strong>
+        <div class="splash-spinner" aria-hidden="true" />
+      </div>
+    </Transition>
     <div v-if="background.imageUrl.value" class="bg-layer">
       <div class="bg-image" :style="bgStyle" />
       <div class="bg-overlay" :style="{ background: bgOverlayColor }" />
@@ -998,6 +1005,76 @@ onBeforeUnmount(() => {
   background-image:
     radial-gradient(circle at 12% 4%, rgba(113, 145, 255, 0.18), transparent 28%),
     radial-gradient(circle at 88% 18%, rgba(193, 130, 255, 0.14), transparent 24%);
+}
+/* ===== 首开整页品牌过渡 ===== */
+.brand-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(113, 145, 255, 0.5), transparent 36%),
+    radial-gradient(circle at 84% 30%, rgba(193, 130, 255, 0.38), transparent 32%),
+    linear-gradient(150deg, #eef3ff, #f7f2ff);
+  color: #182230;
+}
+.brand-splash::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 12% 85%, rgba(113, 145, 255, 0.4), transparent 30%),
+    radial-gradient(circle at 90% 90%, rgba(193, 130, 255, 0.32), transparent 26%);
+}
+.splash-mark {
+  width: 76px;
+  height: 76px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, #4f7cff, #7758ee);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 18px 44px rgba(79, 124, 255, 0.4);
+}
+.splash-name {
+  font-size: 22px;
+  letter-spacing: 0.4px;
+}
+.splash-spinner {
+  margin-top: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid rgba(79, 124, 255, 0.18);
+  border-top-color: #4f7cff;
+  animation: splash-rotate 0.8s linear infinite;
+}
+@keyframes splash-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.splash-enter-active {
+  transition: opacity 0.4s ease;
+}
+.splash-leave-active {
+  transition: opacity 0.5s ease;
+}
+.splash-enter-from,
+.splash-leave-to {
+  opacity: 0;
+}
+html.dark .brand-splash {
+  background:
+    radial-gradient(circle at 18% 12%, rgba(71, 102, 190, 0.7), transparent 36%),
+    radial-gradient(circle at 84% 30%, rgba(135, 78, 174, 0.55), transparent 32%),
+    linear-gradient(150deg, #171c23, #20242e);
+  color: #d5dbe3;
 }
 /* ===== 随机背景层 ===== */
 .bg-layer {
