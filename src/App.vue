@@ -208,10 +208,7 @@ function handleCategoryClick(event: MouseEvent, category: Category) {
     suppressCategoryClick = false
     return
   }
-  if (categoryChildren(category.id).length) {
-    toggleCategoryExpanded(event, category.id)
-    return
-  }
+  // 无论有无二级，点击分类本体都导航过去；展开/收起只由右侧箭头(category-toggle)触发。
   jumpTo(category.id)
 }
 
