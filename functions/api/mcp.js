@@ -112,7 +112,10 @@ const TOOLS = [
   // ---------- Auth write tools: links ----------
   {
     name: 'add_link',
-    description: 'Add a saved link to the navigation. Requires authentication.',
+    description:
+      'Add a saved link to the navigation. Requires authentication. ' +
+      'The card shows the website favicon automatically: leave `icon` empty and do NOT provide emoji — ' +
+      'only supply `icon` as an image URL (http(s) or data:image) when a custom favicon is required.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -120,7 +123,7 @@ const TOOLS = [
         url: { type: 'string' },
         description: { type: 'string' },
         categoryId: { type: 'string' },
-        icon: { type: 'string' },
+        icon: { type: 'string', description: 'Optional image URL override. Leave empty for auto favicon; emoji is ignored.' },
         pinned: { type: 'boolean' },
       },
       required: ['title', 'url'],
@@ -128,7 +131,9 @@ const TOOLS = [
   },
   {
     name: 'update_link',
-    description: 'Update a saved link by id. Requires authentication.',
+    description:
+      'Update a saved link by id. Requires authentication. ' +
+      'Same icon rule as add_link: leave `icon` empty (or an image URL) — emoji is ignored.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -137,7 +142,7 @@ const TOOLS = [
         url: { type: 'string' },
         description: { type: 'string' },
         categoryId: { type: 'string' },
-        icon: { type: 'string' },
+        icon: { type: 'string', description: 'Optional image URL override. Leave empty for auto favicon; emoji is ignored.' },
         pinned: { type: 'boolean' },
       },
       required: ['id'],
@@ -168,7 +173,7 @@ const TOOLS = [
               url: { type: 'string' },
               description: { type: 'string' },
               categoryId: { type: 'string' },
-              icon: { type: 'string' },
+              icon: { type: 'string', description: 'Optional image URL override. Leave empty for auto favicon; emoji is ignored.' },
               pinned: { type: 'boolean' },
             },
             required: ['title', 'url'],
@@ -388,9 +393,22 @@ function sanitizeLinkFields(args) {
     if (isHttpUrl(candidate)) out.url = candidate;
   }
   if (args.description !== undefined) out.description = String(args.description).slice(0, 500);
-  if (args.icon !== undefined) out.icon = String(args.icon).slice(0, 1000);
+  if (args.icon !== undefined) out.icon = sanitizeLinkIcon(args.icon);
   if (args.pinned !== undefined) out.pinned = Boolean(args.pinned);
   return out;
+}
+
+// A link icon must be a resolvable image URL (a `/api/favicon` route, an http(s)
+// URL, or a data: image). A bare emoji or any other non-URL text is invalid for
+// links, so we drop it and let the frontend auto-fetch the website's real favicon.
+function sanitizeLinkIcon(value) {
+  if (value === undefined) return undefined;
+  const raw = String(value).trim();
+  if (!raw) return undefined;
+  if (/^(https?:)?\/\//i.test(raw) || raw.startsWith('data:image')) {
+    return raw.slice(0, 2000);
+  }
+  return undefined;
 }
 
 function sanitizeCategory(category) {
