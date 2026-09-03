@@ -50,6 +50,8 @@ const hideTools = ref(localStorage.getItem('cloudnav_hide_tools') === '1')
 const editingLink = ref<Partial<LinkItem>>({})
 const iconUploading = ref(false)
 const iconError = ref('')
+const splashIconBroken = ref(false)
+const splashIconSrc = computed(() => nav.config.ai.faviconUrl || '/favicon.ico')
 const password = ref('')
 const authError = ref('')
 const showPassword = ref(false)
@@ -581,7 +583,16 @@ onBeforeUnmount(() => {
   <div class="app-shell" :class="{ 'has-bg': Boolean(background.imageUrl.value) }">
     <Transition name="splash">
       <div v-if="nav.loading.value" class="brand-splash" aria-busy="true">
-        <div class="splash-mark"><Bookmark :size="34" /></div>
+        <div class="splash-mark">
+          <img
+            v-if="!splashIconBroken"
+            class="splash-logo"
+            :src="splashIconSrc"
+            alt=""
+            @error="splashIconBroken = true"
+          />
+          <Bookmark v-else :size="34" />
+        </div>
         <strong class="splash-name">{{ nav.config.navigationName || 'CloudNav' }}</strong>
         <div class="splash-spinner" aria-hidden="true" />
       </div>
@@ -1062,6 +1073,11 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   box-shadow: 0 18px 44px rgba(79, 124, 255, 0.4);
+}
+.splash-logo {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
 }
 .splash-name {
   font-size: 22px;
