@@ -1037,10 +1037,11 @@ onBeforeUnmount(() => {
   background: #eef1f9;
   color: #182230;
   background-image:
-    radial-gradient(circle at 8% 6%, rgba(127, 156, 255, 0.34), transparent 34%),
-    radial-gradient(circle at 30% 110%, rgba(182, 140, 255, 0.28), transparent 42%),
-    radial-gradient(circle at 88% 12%, rgba(255, 176, 190, 0.22), transparent 30%),
-    linear-gradient(160deg, #eef2ff 0%, #f5f0ff 48%, #eaf1fb 100%);
+    radial-gradient(1100px 640px at 4% -4%, rgba(126, 152, 255, 0.6), transparent 58%),
+    radial-gradient(980px 900px at -8% 106%, rgba(198, 142, 255, 0.55), transparent 58%),
+    radial-gradient(900px 700px at 96% -6%, rgba(255, 176, 192, 0.5), transparent 58%),
+    radial-gradient(760px 720px at 92% 110%, rgba(118, 196, 255, 0.46), transparent 56%),
+    linear-gradient(160deg, #eef2ff 0%, #f7f1ff 50%, #ecf2fb 100%);
 }
 /* ===== 首开整页品牌过渡 ===== */
 .brand-splash {
@@ -1145,10 +1146,10 @@ html.dark .brand-splash {
   border-bottom-color: rgba(255, 255, 255, 0.45);
 }
 .app-shell.has-bg .sidebar {
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.6), rgba(246, 249, 255, 0.48));
-  backdrop-filter: blur(16px) saturate(1.3);
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  border-right-color: rgba(255, 255, 255, 0.4);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.62), rgba(246, 249, 255, 0.42));
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  border-right-color: rgba(255, 255, 255, 0.5);
 }
 .app-shell.has-bg .brand {
   border-bottom-color: rgba(255, 255, 255, 0.4);
@@ -1181,10 +1182,10 @@ html.dark .app-shell.has-bg .header {
   border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 html.dark .app-shell.has-bg .sidebar {
-  background: linear-gradient(155deg, rgba(32, 40, 51, 0.62), rgba(24, 30, 38, 0.52));
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
-  border-right-color: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(165deg, rgba(34, 42, 54, 0.64), rgba(24, 30, 38, 0.48));
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border-right-color: rgba(255, 255, 255, 0.1);
 }
 html.dark .app-shell.has-bg .brand {
   border-bottom-color: rgba(255, 255, 255, 0.08);
@@ -1213,44 +1214,45 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   position: fixed;
   inset: 0 auto 0 0;
   width: 250px;
-  background: rgba(255, 255, 255, 0.52);
-  backdrop-filter: blur(22px) saturate(1.7);
-  -webkit-backdrop-filter: blur(22px) saturate(1.7);
-  border-right: 1px solid rgba(255, 255, 255, 0.55);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.58) 0%,
+    rgba(245, 248, 255, 0.4) 100%
+  );
+  backdrop-filter: blur(18px) saturate(1.9);
+  -webkit-backdrop-filter: blur(18px) saturate(1.9);
+  border-right: 1px solid rgba(255, 255, 255, 0.72);
   box-shadow:
-    2px 0 24px rgba(58, 78, 122, 0.08),
-    12px 0 38px rgba(48, 65, 104, 0.08),
-    inset -1px 0 rgba(255, 255, 255, 0.32);
+    2px 0 16px rgba(58, 78, 122, 0.05),
+    14px 0 44px rgba(48, 65, 104, 0.1),
+    inset -1px 0 rgba(255, 255, 255, 0.42);
   display: flex;
   flex-direction: column;
   z-index: 40;
   isolation: isolate;
   overflow: hidden;
-  contain: layout paint;
-  will-change: transform;
 }
 .sidebar::before,
 .sidebar::after {
   content: '';
   position: absolute;
   border-radius: 999px;
-  filter: blur(2px);
   pointer-events: none;
   z-index: -1;
 }
 .sidebar::before {
-  width: 180px;
-  height: 180px;
-  top: -70px;
-  right: -65px;
-  background: rgba(134, 157, 255, 0.22);
+  width: 210px;
+  height: 210px;
+  top: -60px;
+  right: -70px;
+  background: rgba(134, 157, 255, 0.34);
 }
 .sidebar::after {
-  width: 150px;
-  height: 150px;
-  bottom: 80px;
-  left: -85px;
-  background: rgba(210, 157, 255, 0.17);
+  width: 190px;
+  height: 190px;
+  bottom: 60px;
+  left: -95px;
+  background: rgba(210, 157, 255, 0.3);
 }
 .brand {
   height: 68px;
@@ -1259,7 +1261,7 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   align-items: center;
   gap: 11px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.14);
+  background: transparent;
 }
 .brand-mark {
   width: 34px;
@@ -1308,7 +1310,7 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
 .sidebar-footer button {
   width: 100%;
   border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.18);
+  background: transparent;
   color: #596579;
   display: flex;
   align-items: center;
@@ -1326,17 +1328,21 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
 }
 .category-nav button:hover,
 .sidebar-footer button:hover {
-  background: rgba(255, 255, 255, 0.4);
-  border-color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.72);
   color: #315ed5;
   box-shadow: 0 5px 15px rgba(63, 84, 133, 0.08);
   transform: translateX(2px);
 }
 .category-nav button.active {
-  background: linear-gradient(120deg, rgba(107, 95, 255, 0.16), rgba(210, 90, 230, 0.12));
-  border-color: rgba(122, 102, 255, 0.32);
+  background: linear-gradient(
+    120deg,
+    rgba(124, 110, 255, 0.2),
+    rgba(214, 96, 234, 0.14)
+  );
+  border-color: rgba(122, 102, 255, 0.4);
   color: #5b4bff;
-  box-shadow: 0 6px 18px rgba(80, 70, 180, 0.1);
+  box-shadow: 0 6px 18px rgba(80, 70, 180, 0.12);
 }
 .category-nav button > span.category-name {
   flex: 1 1 auto;
@@ -1349,7 +1355,7 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   margin-left: 14px;
   width: calc(100% - 14px);
   padding-left: 18px;
-  background: rgba(255, 255, 255, 0.1);
+  background: transparent;
   font-size: 12px;
 }
 .category-nav button.dragging {
@@ -1403,7 +1409,7 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
 .sidebar-footer {
   padding: 12px 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.12);
+  background: transparent;
 }
 .main-area {
   margin-left: 250px;
@@ -2074,16 +2080,22 @@ html.dark .app-shell {
   background: #171c23;
   color: #d5dbe3;
   background-image:
-    radial-gradient(circle at 10% 2%, rgba(71, 102, 190, 0.24), transparent 30%),
-    radial-gradient(circle at 88% 18%, rgba(135, 78, 174, 0.18), transparent 26%);
+    radial-gradient(1100px 640px at 4% -4%, rgba(84, 118, 214, 0.42), transparent 58%),
+    radial-gradient(980px 900px at -8% 106%, rgba(148, 84, 194, 0.4), transparent 58%),
+    radial-gradient(760px 720px at 92% 110%, rgba(74, 132, 186, 0.34), transparent 56%);
 }
 html.dark .sidebar {
-  background: rgba(24, 31, 41, 0.55);
-  backdrop-filter: blur(22px) saturate(1.2);
-  -webkit-backdrop-filter: blur(22px) saturate(1.2);
-  border-color: rgba(172, 194, 230, 0.14);
+  background: linear-gradient(
+    165deg,
+    rgba(38, 46, 60, 0.62) 0%,
+    rgba(28, 35, 45, 0.46) 100%
+  );
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border-color: rgba(172, 194, 230, 0.16);
   box-shadow:
-    2px 0 24px rgba(0, 0, 0, 0.18),
+    2px 0 16px rgba(0, 0, 0, 0.2),
+    12px 0 40px rgba(0, 0, 0, 0.22),
     inset -1px 0 rgba(255, 255, 255, 0.05);
 }
 html.dark .category-section-label {
@@ -2117,32 +2129,36 @@ html.dark .link-card p {
 }
 html.dark .category-nav button,
 html.dark .sidebar-footer button {
-  background: rgba(255, 255, 255, 0.035);
+  background: transparent;
   border-color: transparent;
 }
 html.dark .category-nav button:hover,
 html.dark .sidebar-footer button:hover {
-  background: rgba(115, 145, 224, 0.18);
-  border-color: rgba(145, 171, 246, 0.25);
+  background: rgba(115, 145, 224, 0.2);
+  border-color: rgba(145, 171, 246, 0.26);
   color: #c9d8ff;
 }
 html.dark .category-nav button.active {
-  background: rgba(115, 145, 224, 0.24);
-  border-color: rgba(145, 171, 246, 0.38);
+  background: linear-gradient(
+    120deg,
+    rgba(124, 110, 255, 0.26),
+    rgba(198, 96, 234, 0.2)
+  );
+  border-color: rgba(145, 171, 246, 0.4);
   color: #d8e3ff;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
 }
 html.dark .brand,
 html.dark .sidebar-footer {
   border-color: rgba(172, 194, 230, 0.16);
-  background: rgba(255, 255, 255, 0.035);
+  background: transparent;
 }
 html.dark .pinned-section {
   background: linear-gradient(135deg, #202a3f, #29243a);
   border-color: #35415e;
 }
 html.dark .category-nav button.subcategory {
-  background: rgba(255, 255, 255, 0.025);
+  background: transparent;
 }
 html.dark .subcategory-section {
   border-left-color: rgba(145, 171, 246, 0.24);
