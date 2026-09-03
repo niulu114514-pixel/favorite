@@ -208,7 +208,14 @@ function handleCategoryClick(event: MouseEvent, category: Category) {
     suppressCategoryClick = false
     return
   }
-  // 无论有无二级，点击分类本体都导航过去；展开/收起只由右侧箭头(category-toggle)触发。
+  // 点击分类本体始终导航过去。若该分类含二级且当前处于折叠状态，先把二级展开，
+  // 让二级分类浮现，用户随后即可直接进入任意二级分类。
+  if (categoryChildren(category.id).length && !isCategoryExpanded(category.id)) {
+    const next = new Set(collapsedCategoryIds.value)
+    next.delete(category.id)
+    collapsedCategoryIds.value = next
+    localStorage.setItem('cloudnav_collapsed_categories', JSON.stringify([...next]))
+  }
   jumpTo(category.id)
 }
 
