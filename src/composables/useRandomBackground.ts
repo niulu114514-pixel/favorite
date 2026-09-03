@@ -13,6 +13,11 @@ export function useRandomBackground() {
   let current: BackgroundConfig = { ...DEFAULT_BACKGROUND_CONFIG }
   let timer: ReturnType<typeof setInterval> | undefined
 
+  /** 配置内容是否完全相同（忽略字段顺序） */
+  function sameConfig(a: BackgroundConfig, b: BackgroundConfig) {
+    return JSON.stringify(a) === JSON.stringify(b)
+  }
+
   /** 依据来源构造成最终可加载的图片地址，并附带时间戳绕开缓存以取新图 */
   function buildSrc(cfg: BackgroundConfig, ts: number) {
     let url =
@@ -42,7 +47,11 @@ export function useRandomBackground() {
   }
 
   function apply(cfg: BackgroundConfig) {
-    current = { ...cfg }
+    const next = { ...cfg }
+    // 刷新时 onMounted 的显式调用与 watch 会对同一配置各触发一次 apply。
+    // 若配置内容未变，直接忽略，避免随机背景被连续换两次（每次 buildSrc 时间戳都不同）。
+    if (sameConfig(next, current)) return
+    current = next
     stopAuto()
     if (!current.enabled) {
       imageUrl.value = ''
