@@ -1005,17 +1005,17 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
 }
-/* ===== 启用背景时的玻璃化覆盖 ===== */
+/* ===== 启用背景时的半透明覆盖（精简 backdrop-filter 以保性能）===== */
 .app-shell.has-bg .header {
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(16px) saturate(1.4);
-  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-bottom-color: rgba(255, 255, 255, 0.45);
 }
 .app-shell.has-bg .sidebar {
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.55), rgba(246, 249, 255, 0.42));
-  backdrop-filter: blur(18px) saturate(1.3);
-  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.68), rgba(246, 249, 255, 0.55));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-right-color: rgba(255, 255, 255, 0.4);
 }
 .app-shell.has-bg .brand {
@@ -1026,16 +1026,14 @@ onBeforeUnmount(() => {
   border-top-color: rgba(255, 255, 255, 0.4);
   background: rgba(255, 255, 255, 0.1);
 }
-/* 网站卡片：半透明 + 模糊背景 */
+/* 网站卡片：纯半透明（不用 backdrop-filter，避免集成显卡多卡片卡顿） */
 .app-shell.has-bg :deep(.link-card) {
-  background: rgba(255, 255, 255, 0.55);
-  border-color: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(14px) saturate(1.35);
-  -webkit-backdrop-filter: blur(14px) saturate(1.35);
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(255, 255, 255, 0.55);
   box-shadow: 0 4px 18px rgba(20, 30, 52, 0.14);
 }
 .app-shell.has-bg :deep(.link-card:hover) {
-  background: rgba(255, 255, 255, 0.74);
+  background: rgba(255, 255, 255, 0.85);
   border-color: rgba(255, 255, 255, 0.85);
   box-shadow: 0 10px 30px rgba(30, 44, 74, 0.22);
 }
@@ -1043,17 +1041,15 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.5);
 }
 .app-shell.has-bg :deep(.card-actions) {
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.9);
   border-color: rgba(255, 255, 255, 0.7);
 }
 html.dark .app-shell.has-bg .header {
-  background: rgba(32, 40, 51, 0.62);
+  background: rgba(32, 40, 51, 0.72);
   border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 html.dark .app-shell.has-bg .sidebar {
-  background: linear-gradient(155deg, rgba(32, 40, 51, 0.6), rgba(24, 30, 38, 0.5));
+  background: linear-gradient(155deg, rgba(32, 40, 51, 0.7), rgba(24, 30, 38, 0.6));
   border-right-color: rgba(255, 255, 255, 0.08);
 }
 html.dark .app-shell.has-bg .brand {
@@ -1065,18 +1061,18 @@ html.dark .app-shell.has-bg .sidebar-footer {
   background: rgba(255, 255, 255, 0.04);
 }
 html.dark .app-shell.has-bg :deep(.link-card) {
-  background: rgba(34, 41, 51, 0.55);
+  background: rgba(34, 41, 51, 0.72);
   border-color: rgba(255, 255, 255, 0.12);
 }
 html.dark .app-shell.has-bg :deep(.link-card:hover) {
-  background: rgba(34, 41, 51, 0.75);
+  background: rgba(34, 41, 51, 0.85);
   border-color: rgba(255, 255, 255, 0.2);
 }
 html.dark .app-shell.has-bg :deep(.link-card img) {
   background: rgba(20, 26, 33, 0.5);
 }
 html.dark .app-shell.has-bg :deep(.card-actions) {
-  background: rgba(34, 41, 51, 0.8);
+  background: rgba(34, 41, 51, 0.9);
   border-color: rgba(255, 255, 255, 0.12);
 }
 .sidebar {
