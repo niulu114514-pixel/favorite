@@ -248,7 +248,11 @@ function sectionValue(name: keyof SettingsDraft) {
 }
 
 /** 原始配置中该分区的取值（用于与草稿比对，只提交发生变更的分区） */
-function originalSectionValue(name: keyof SettingsDraft, source: SettingsDraft) {
+// 可提交的配置分区：`ui`/`view` 在 SettingsDraft 上不存在独立字段，
+// 保存时被映射到 `showPinned` / `defaultViewMode`。
+type SettingsSection = 'ai' | 'background' | 'icon' | 'webdav' | 'ui' | 'view'
+
+function originalSectionValue(name: SettingsSection, source: SettingsDraft) {
   switch (name) {
     case 'ai':
       return {
@@ -262,6 +266,12 @@ function originalSectionValue(name: keyof SettingsDraft, source: SettingsDraft) 
       return source.icon
     case 'webdav':
       return source.webdav
+    case 'ui':
+      // props.config 上不存在独立的 `ui` 字段，需映射到 `showPinned`。
+      return { showPinnedWebsites: source.showPinned }
+    case 'view':
+      // props.config 上不存在独立的 `view` 字段，需映射到 `defaultViewMode`。
+      return { defaultMode: source.defaultViewMode }
     default:
       return source[name]
   }
@@ -279,7 +289,7 @@ async function save() {
   sections.push(['view', { defaultMode: draft.defaultViewMode }])
   try {
     for (const [section, value] of sections) {
-      const key = section as keyof SettingsDraft
+      const key = section as SettingsSection
       if (JSON.stringify(value) !== JSON.stringify(originalSectionValue(key, props.config))) {
         configs[key] = value
       }
