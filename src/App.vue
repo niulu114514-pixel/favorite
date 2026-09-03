@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import {
+  ArrowUpRight,
   Banknote,
   Bookmark,
   BookOpen,
@@ -908,11 +909,16 @@ onBeforeUnmount(() => {
             "
             class="category-section pinned-section"
           >
-            <h2>
-              <Star :size="20" fill="currentColor" /> 置顶网站
-              <span>{{ nav.pinnedLinks.value.length }}</span>
-            </h2>
-            <div class="link-grid" :class="{ compact }">
+            <div class="pinned-head">
+              <div class="pinned-title">
+                <span class="pinned-icon"
+                  ><Star :size="16" :stroke-width="2.4" fill="currentColor"
+                /></span>
+                <h2>置顶网站</h2>
+              </div>
+              <span class="pinned-count">{{ nav.pinnedLinks.value.length }}</span>
+            </div>
+            <div class="link-grid pinned-grid" :class="{ compact }">
               <a
                 v-for="link in nav.pinnedLinks.value"
                 :key="link.id"
@@ -925,7 +931,7 @@ onBeforeUnmount(() => {
                   link.pinned,
                   compact,
                 ]"
-                class="link-card"
+                class="link-card pinned-card"
                 :href="safeTargetUrl(link.url)"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -935,14 +941,15 @@ onBeforeUnmount(() => {
                   alt=""
                   loading="lazy"
                   decoding="async"
-                  width="39"
-                  height="39"
+                  width="46"
+                  height="46"
                   @error="handleFaviconError($event, link)"
                 />
                 <div>
                   <strong>{{ link.title }}</strong>
                   <p v-if="!compact">{{ link.description || link.url }}</p>
                 </div>
+                <ArrowUpRight :size="16" class="pinned-open" />
               </a>
             </div>
           </section>
@@ -1822,25 +1829,108 @@ html.dark .flyout-item:hover {
 }
 .pinned-section {
   margin-inline: -8px;
-  padding: 27px 28px 29px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, #eef3ff, #f6f2ff);
-  border: 1px solid #dfe7ff;
+  padding: 24px 26px 26px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(238, 243, 255, 0.82), rgba(246, 242, 255, 0.82));
+  border: 1px solid rgba(223, 231, 255, 0.9);
+  box-shadow: 0 10px 30px rgba(80, 100, 180, 0.08);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+}
+.pinned-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.pinned-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.pinned-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  color: #fff;
+  background: linear-gradient(135deg, #6a5cff, #8b5cf6);
+  box-shadow: 0 5px 14px rgba(106, 92, 255, 0.35);
 }
 .pinned-section h2 {
-  margin-bottom: 18px;
+  margin: 0;
 }
-.pinned-section .link-grid {
+.pinned-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: #5b6b94;
+  background: rgba(106, 92, 255, 0.1);
+  border: 1px solid rgba(106, 92, 255, 0.22);
+  padding: 3px 11px;
+  border-radius: 20px;
+}
+.pinned-grid {
   gap: 16px;
 }
-.pinned-section .link-card {
-  min-height: clamp(84px, 9vw, 116px);
-  padding: clamp(15px, 2vw, 24px);
-  gap: clamp(14px, 1.6vw, 20px);
+.pinned-card {
+  position: relative;
+  min-height: clamp(90px, 9vw, 120px);
+  padding: clamp(16px, 2vw, 24px) 46px clamp(16px, 2vw, 24px) clamp(16px, 2vw, 24px);
+  gap: clamp(14px, 1.6vw, 18px);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(223, 231, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(42, 60, 100, 0.04);
 }
-.pinned-section .link-grid.compact .link-card {
-  min-height: 64px;
-  padding: 11px 14px;
+.pinned-card:hover {
+  transform: translateY(-3px);
+  border-color: #a8baf7;
+  background: #fff;
+  box-shadow: 0 16px 38px rgba(42, 60, 100, 0.16);
+}
+.pinned-card img {
+  width: clamp(46px, 5vw, 56px);
+  height: clamp(46px, 5vw, 56px);
+  border-radius: 14px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #eef1f7;
+}
+.pinned-open {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: #6a5cff;
+  background: rgba(106, 92, 255, 0.12);
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    transform 0.2s ease;
+}
+.pinned-card:hover .pinned-open {
+  opacity: 1;
+}
+.pinned-card:hover .pinned-open:hover {
+  transform: translateY(-50%) translate(1px, -1px);
+}
+.pinned-grid.compact .pinned-card {
+  min-height: 66px;
+  padding: 11px 42px 11px 14px;
+  gap: 12px;
+  border-radius: 13px;
+}
+.pinned-grid.compact .pinned-card img {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  padding: 6px;
 }
 .subcategory-section {
   margin-left: 22px;
@@ -1859,7 +1949,7 @@ html.dark .flyout-item:hover {
   margin-bottom: 0;
 }
 .pinned-section h2 {
-  color: #4968ca;
+  color: #3a3f5c;
 }
 .section-title {
   display: flex;
@@ -2478,8 +2568,37 @@ html.dark .sidebar-footer {
   background: transparent;
 }
 html.dark .pinned-section {
-  background: linear-gradient(135deg, #202a3f, #29243a);
-  border-color: #35415e;
+  background: linear-gradient(135deg, rgba(32, 42, 63, 0.85), rgba(41, 36, 58, 0.85));
+  border-color: rgba(64, 80, 115, 0.8);
+}
+html.dark .pinned-section h2 {
+  color: #e8ebf5;
+}
+html.dark .pinned-count {
+  color: #c3cef2;
+  background: rgba(134, 120, 255, 0.16);
+  border-color: rgba(134, 120, 255, 0.3);
+}
+html.dark .pinned-icon {
+  background: linear-gradient(135deg, #7a6cff, #a06df6);
+}
+html.dark .pinned-card {
+  background: rgba(31, 39, 58, 0.66);
+  border-color: rgba(64, 80, 115, 0.7);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+html.dark .pinned-card:hover {
+  background: #273049;
+  border-color: #5a70a8;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.42);
+}
+html.dark .pinned-card img {
+  background: #fff;
+  border-color: #3a4f7a;
+}
+html.dark .pinned-open {
+  color: #b0a5ff;
+  background: rgba(134, 120, 255, 0.18);
 }
 html.dark .category-nav button.subcategory {
   background: transparent;
@@ -2599,6 +2718,21 @@ html.dark .secondary-button {
   .pinned-section {
     margin-inline: 0;
     padding: 18px 14px 20px;
+  }
+  .pinned-head {
+    margin-bottom: 14px;
+  }
+  .pinned-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+  }
+  .pinned-card {
+    padding-right: 14px;
+    border-radius: 13px;
+  }
+  .pinned-open {
+    display: none;
   }
   .link-card img {
     width: 34px;
