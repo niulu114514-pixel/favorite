@@ -65,7 +65,8 @@ const background = useRandomBackground()
 const searchQuery = ref('')
 const externalSearch = ref(false)
 const sidebarOpen = ref(false)
-const sidebarCollapsed = ref(localStorage.getItem('cloudnav_sidebar_collapsed') === '1')
+// 默认收起侧栏：除非用户之前显式保存了展开状态（'0'），否则始终为收起态。
+const sidebarCollapsed = ref(localStorage.getItem('cloudnav_sidebar_collapsed') !== '0')
 const dark = ref(localStorage.getItem('cloudnav_theme_preference') === 'dark')
 const savedViewMode = localStorage.getItem('cloudnav_view_mode')
 const hasSavedViewMode = savedViewMode === 'compact' || savedViewMode === 'detailed'
@@ -208,17 +209,6 @@ const linksByCategory = computed(() => {
 
 function categoryLinks(categoryId: string) {
   return linksByCategory.value.get(categoryId) || []
-}
-
-function categoryCount(category: Category) {
-  const direct = categoryLinks(category.id).length
-  if (category.parentId) return direct
-  return (
-    direct +
-    categoryChildren(category.id).reduce((total, child) => {
-      return total + categoryLinks(child.id).length
-    }, 0)
-  )
 }
 
 function applyTheme() {
@@ -716,7 +706,6 @@ onBeforeUnmount(() => {
               <component :is="getCategoryIcon(category.icon)" :size="17" /><span
                 class="category-name"
                 >{{ category.name }}</span
-              ><span class="category-count">{{ categoryCount(category) }}</span
               ><span
                 v-if="categoryChildren(category.id).length"
                 class="category-toggle"
@@ -757,7 +746,6 @@ onBeforeUnmount(() => {
               >
                 <component :is="getCategoryIcon(child.icon)" :size="16" /><span
                   >{{ child.name }}</span
-                ><span class="category-count">{{ categoryCount(child) }}</span
                 ><ChevronRight :size="15" />
               </button>
             </div>
@@ -774,13 +762,6 @@ onBeforeUnmount(() => {
       <header class="header">
         <button class="icon-button mobile-only" aria-label="打开菜单" @click="sidebarOpen = true">
           <Menu />
-        </button>
-        <button
-          class="icon-button desktop-only sidebar-toggle"
-          :aria-label="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
-          @click="toggleSidebar"
-        >
-          <PanelLeft :size="20" />
         </button>
         <form class="search-box" @submit.prevent="submitSearch">
           <Search :size="18" />
@@ -916,8 +897,8 @@ onBeforeUnmount(() => {
             >
               <div class="section-title">
                 <h2>
-                  <Folder :size="20" /> {{ category.name }}
-                  <span>{{ categoryCount(category) }}</span>
+                  <component :is="getCategoryIcon(category.icon)" :size="20" />
+                  {{ category.name }}
                 </h2>
               </div>
               <LinkGrid

@@ -3,25 +3,54 @@ import { computed, reactive, ref, watch } from 'vue'
 import {
   ArrowDown,
   ArrowUp,
+  Bookmark,
+  BookOpen,
+  Box,
+  Briefcase,
   Check,
+  Clapperboard,
   Cloud,
   CloudUpload,
+  Code,
+  Compass,
   Copy,
+  Database,
   Download,
+  Dumbbell,
   ExternalLink,
+  FileText,
   Folder,
   FolderPlus,
+  Gamepad2,
+  Globe,
+  GraduationCap,
+  Grid2X2,
   Image,
   KeyRound,
+  Layers,
+  LayoutList,
+  Music,
+  Newspaper,
   Palette,
   Pencil,
+  PenTool,
   RefreshCw,
   Save,
+  Server,
   Settings,
+  ShoppingBag,
+  ShoppingCart,
   Sparkles,
+  Star,
+  Target,
   Trash2,
+  TrendingUp,
+  Users,
+  Wifi,
+  Wrench,
   X,
 } from 'lucide-vue-next'
+import type { Component } from 'vue'
 import type {
   AIConfig,
   BackgroundConfig,
@@ -267,11 +296,52 @@ async function restoreNow(filename: string) {
 // ===== 分类创建 / 编辑（弹窗）=====
 const categoryModalOpen = ref(false)
 const savingCategory = ref(false)
-const categoryModal = ref<{ id: string | null; name: string; parentId: string }>({
+
+type CategoryModal = { id: string | null; name: string; parentId: string; icon: string }
+const categoryModal = ref<CategoryModal>({
   id: null,
   name: '',
   parentId: '',
+  icon: 'Folder',
 })
+
+/** 可选分类图标（需与 App.vue 中的 CATEGORY_ICON_MAP 保持一致） */
+const categoryIconOptions: { name: string; icon: Component }[] = [
+  { name: 'Star', icon: Star },
+  { name: 'Folder', icon: Folder },
+  { name: 'Target', icon: Target },
+  { name: 'Wifi', icon: Wifi },
+  { name: 'Bookmark', icon: Bookmark },
+  { name: 'BookOpen', icon: BookOpen },
+  { name: 'Box', icon: Box },
+  { name: 'Briefcase', icon: Briefcase },
+  { name: 'Clapperboard', icon: Clapperboard },
+  { name: 'Cloud', icon: Cloud },
+  { name: 'Code', icon: Code },
+  { name: 'Compass', icon: Compass },
+  { name: 'Database', icon: Database },
+  { name: 'Dumbbell', icon: Dumbbell },
+  { name: 'FileText', icon: FileText },
+  { name: 'Gamepad2', icon: Gamepad2 },
+  { name: 'Globe', icon: Globe },
+  { name: 'GraduationCap', icon: GraduationCap },
+  { name: 'Grid2X2', icon: Grid2X2 },
+  { name: 'Image', icon: Image },
+  { name: 'Layers', icon: Layers },
+  { name: 'LayoutList', icon: LayoutList },
+  { name: 'Music', icon: Music },
+  { name: 'Newspaper', icon: Newspaper },
+  { name: 'Palette', icon: Palette },
+  { name: 'PenTool', icon: PenTool },
+  { name: 'Server', icon: Server },
+  { name: 'Settings', icon: Settings },
+  { name: 'ShoppingBag', icon: ShoppingBag },
+  { name: 'ShoppingCart', icon: ShoppingCart },
+  { name: 'Sparkles', icon: Sparkles },
+  { name: 'TrendingUp', icon: TrendingUp },
+  { name: 'Users', icon: Users },
+  { name: 'Wrench', icon: Wrench },
+]
 
 /** 可作为父级的分类（一级分类，即没有 parentId） */
 const parentCategoryOptions = computed(() => {
@@ -293,18 +363,23 @@ function childrenOf(parentId: string) {
 }
 
 function openNewCategory() {
-  categoryModal.value = { id: null, name: '', parentId: '' }
+  categoryModal.value = { id: null, name: '', parentId: '', icon: 'Folder' }
   categoryModalOpen.value = true
 }
 
 /** 直接给指定一级分类添加二级分类，默认选中该父级 */
 function openAddChild(parent: Category) {
-  categoryModal.value = { id: null, name: '', parentId: parent.id }
+  categoryModal.value = { id: null, name: '', parentId: parent.id, icon: 'Folder' }
   categoryModalOpen.value = true
 }
 
 function openEditCategory(category: Category) {
-  categoryModal.value = { id: category.id, name: category.name, parentId: category.parentId || '' }
+  categoryModal.value = {
+    id: category.id,
+    name: category.name,
+    parentId: category.parentId || '',
+    icon: category.icon || 'Folder',
+  }
   categoryModalOpen.value = true
 }
 
@@ -320,6 +395,7 @@ async function submitCategoryForm() {
       id: categoryModal.value.id || undefined,
       name: categoryModal.value.name.trim(),
       parentId: categoryModal.value.parentId || undefined,
+      icon: categoryModal.value.icon || 'Folder',
     })
     categoryModalOpen.value = false
   } finally {
@@ -868,6 +944,21 @@ function formatSize(bytes: number) {
           </select>
         </label>
         <p class="modal-help">默认新建为一级分类；选择上级分类后即为二级，支持两级分类。</p>
+        <div class="category-field-label">图标</div>
+        <div class="category-icon-picker">
+          <button
+            v-for="option in categoryIconOptions"
+            :key="option.name"
+            type="button"
+            class="category-icon-option"
+            :class="{ active: categoryModal.icon === option.name }"
+            :title="option.name"
+            :aria-pressed="categoryModal.icon === option.name"
+            @click="categoryModal.icon = option.name"
+          >
+            <component :is="option.icon" :size="18" />
+          </button>
+        </div>
         <div class="category-form-actions">
           <button type="button" class="settings-secondary" @click="closeCategoryForm">
             取消
@@ -1279,6 +1370,43 @@ html.dark .settings-secondary {
   justify-content: flex-end;
   gap: 9px;
   margin-top: 14px;
+}
+.category-field-label {
+  margin: 14px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+.category-icon-picker {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+}
+.category-icon-option {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--c-border);
+  border-radius: 9px;
+  background: var(--c-bg-soft);
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+.category-icon-option:hover {
+  border-color: var(--c-accent, #6a5cff);
+  color: var(--c-accent, #6a5cff);
+}
+.category-icon-option.active {
+  background: var(--c-accent, #6a5cff);
+  border-color: var(--c-accent, #6a5cff);
+  color: #fff;
+}
+@media (max-width: 560px) {
+  .category-icon-picker {
+    grid-template-columns: repeat(6, 1fr);
+  }
 }
 /* ===== 分类新建/编辑弹窗 ===== */
 .category-modal-wrap {
