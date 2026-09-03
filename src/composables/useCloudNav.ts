@@ -138,7 +138,22 @@ export function useCloudNav() {
     } finally {
       loading.value = false
       // 数据就绪后为 MCP 等未带图标、或历史遗留 emoji 图标的链接回填真实 favicon。
-      void backfillLinkIcons()
+      // 放到浏览器空闲时执行，避免与首屏渲染/用户首次交互抢占主线程。
+      scheduleIdleBackfill()
+    }
+  }
+
+  function scheduleIdleBackfill() {
+    const run = () => void backfillLinkIcons()
+    const requestIdle =
+      typeof window !== 'undefined' &&
+      (window as { requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => void })
+        .requestIdleCallback
+    if (requestIdle) {
+      requestIdle(run, { timeout: 3000 })
+    } else {
+      // 不支持 requestIdleCallback 时退化为宏任务，让位给本轮渲染。
+      setTimeout(run, 0)
     }
   }
 
