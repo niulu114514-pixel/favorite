@@ -46,8 +46,8 @@ export function useCloudNav() {
   const authRequired = ref(false)
   let syncIdleTimer: number | undefined
   const config = reactive({
-    title: '落花流水个人导航',
-    navigationName: 'CloudNav',
+    title: '我的导航',
+    navigationName: '我的导航',
     showPinned: true,
     defaultViewMode: 'detailed' as 'compact' | 'detailed',
     ai: {
