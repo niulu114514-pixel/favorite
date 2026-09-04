@@ -1198,10 +1198,14 @@ function formatSize(bytes: number) {
                 >数据源<select v-model="draft.ticker.source">
                   <option value="mastodon">Mastodon</option>
                   <option value="memos">Memos</option>
+                  <option value="yiyan">每日一言（随机一言）</option>
                   <option value="custom">自定义内容</option>
                 </select></label
               >
             </div>
+            <p v-if="draft.ticker.source === 'yiyan'" class="settings-help">
+              每条随机从 tenapi 每日一言接口获取并滚动展示，无需额外配置。
+            </p>
             <template v-if="draft.ticker.source === 'mastodon'">
               <div class="settings-grid">
                 <label

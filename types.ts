@@ -132,7 +132,7 @@ export interface SearchConfig {
 }
 
 // 滚动 Ticker 来源类型
-export type TickerSource = 'mastodon' | 'memos' | 'custom';
+export type TickerSource = 'mastodon' | 'memos' | 'yiyan' | 'custom';
 
 // 滚动 Ticker 配置
 export interface TickerConfig {

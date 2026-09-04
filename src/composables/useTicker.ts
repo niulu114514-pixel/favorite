@@ -2,7 +2,7 @@ import { computed, ref, watch } from 'vue'
 import type { TickerConfig } from '../../types'
 
 /**
- * 滚动信息条：Mastodon / Memos 动态经服务端 /api/ticker 代理取回，
+ * 滚动信息条：Mastodon / Memos / 每日一言 动态经服务端 /api/ticker 代理取回，
  * 自定义内容直接来自本地配置（多行文本按行拆分）。
  */
 export interface TickerData {
