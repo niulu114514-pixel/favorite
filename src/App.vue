@@ -223,8 +223,15 @@ function handleCategoryClick(event: MouseEvent, category: Category) {
 const visibleLinks = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query || externalSearch.value) return nav.links.value
-  return nav.links.value.filter(link => searchableText(link).includes(query))
+  return nav.links.value.filter(link => linkSearchHit(link, query))
 })
+
+// 网站是否命中搜索：自身字段命中，或其所属分类名命中（搜目录名时也带出其下网站）。
+function linkSearchHit(link: LinkItem, query: string): boolean {
+  if (searchableText(link).includes(query)) return true
+  const category = categoryMap.value.get(link.categoryId)
+  return !!category && category.name.toLowerCase().includes(query)
+}
 
 function searchableText(link: LinkItem) {
   const cached = searchTextCache.get(link)
@@ -237,9 +244,10 @@ function searchableText(link: LinkItem) {
 const linksByCategory = computed(() => {
   const grouped = new Map<string, LinkItem[]>()
   for (const link of visibleLinks.value) {
-    const items = grouped.get(link.categoryId)
-    if (items) items.push(link)
-    else grouped.set(link.categoryId, [link])
+    // 主归属
+    pushToGroup(grouped, link.categoryId, link)
+    // 叠加显示到「常用推荐」
+    if (link.alsoInCommon && link.categoryId !== 'common') pushToGroup(grouped, 'common', link)
   }
   for (const items of grouped.values()) {
     items.sort(
@@ -249,9 +257,30 @@ const linksByCategory = computed(() => {
   return grouped
 })
 
+function pushToGroup(grouped: Map<string, LinkItem[]>, categoryId: string, link: LinkItem) {
+  const items = grouped.get(categoryId)
+  if (items) items.push(link)
+  else grouped.set(categoryId, [link])
+}
+
 function categoryLinks(categoryId: string) {
   return linksByCategory.value.get(categoryId) || []
 }
+
+// 搜索态命中的目录（含二级）：一级名命中时展示其全部二级，二级名单独命中时也列出。
+const matchingCategories = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query || externalSearch.value) return []
+  const result: Array<{ category: Category; children: Category[] }> = []
+  for (const category of topLevelCategories.value) {
+    const nameHit = category.name.toLowerCase().includes(query)
+    const children = categoryChildren(category.id)
+    const childHits = children.filter(child => child.name.toLowerCase().includes(query))
+    const shownChildren = nameHit ? children : childHits
+    if (nameHit || childHits.length) result.push({ category, children: shownChildren })
+  }
+  return result
+})
 
 function categoryCount(category: Category) {
   const direct = categoryLinks(category.id).length
@@ -522,7 +551,10 @@ async function submitLink() {
   if (!editingLink.value.title?.trim() || !editingLink.value.url?.trim()) return
   let url = editingLink.value.url.trim()
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`
-  await nav.saveLink({ ...editingLink.value, title: editingLink.value.title.trim(), url })
+  // 主分类已是「常用推荐」时，叠加开关无意义，归一化掉。
+  const payload = { ...editingLink.value }
+  if (payload.categoryId === 'common') payload.alsoInCommon = false
+  await nav.saveLink({ ...payload, title: editingLink.value.title.trim(), url })
   linkModalOpen.value = false
 }
 
@@ -962,53 +994,139 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <template v-for="category in orderedCategories" :key="category.id">
-            <section
-              v-if="
-                (!category.parentId ||
-                  isCategoryExpanded(category.parentId) ||
-                  searchQuery.trim()) &&
-                (!searchQuery.trim() || categoryLinks(category.id).length)
-              "
-              :id="`category-${category.id}`"
-              class="category-section"
-              :class="{
-                'is-active': activeCategoryId === category.id,
-                'subcategory-section': Boolean(category.parentId),
-              }"
-            >
+          <!-- 非站内搜索态：按分类分组浏览 -->
+          <template v-if="!searchQuery || externalSearch">
+            <template v-for="category in orderedCategories" :key="category.id">
+              <section
+                v-if="
+                  (!category.parentId ||
+                    isCategoryExpanded(category.parentId) ||
+                    searchQuery.trim()) &&
+                  (!searchQuery.trim() || categoryLinks(category.id).length)
+                "
+                :id="`category-${category.id}`"
+                class="category-section"
+                :class="{
+                  'is-active': activeCategoryId === category.id,
+                  'subcategory-section': Boolean(category.parentId),
+                }"
+              >
+                <div class="section-title">
+                  <h2>
+                    <template v-if="isEmojiIcon(category.icon)">
+                      <span class="emoji-icon">{{ category.icon }}</span>
+                    </template>
+                    <component v-else :is="getCategoryIcon(category.icon)" :size="20" />
+                    {{ category.name }}
+                  </h2>
+                </div>
+                <LinkGrid
+                  v-if="categoryLinks(category.id).length"
+                  :links="categoryLinks(category.id)"
+                  :compact="compact"
+                  :can-manage="Boolean(nav.token.value)"
+                  :hide-tools="hideTools"
+                  @pin="nav.togglePin"
+                  @edit="openLinkModal"
+                  @delete="deleteLink"
+                  @reorder="orderedIds => nav.reorderLinks(category.id, orderedIds)"
+                />
+                <button
+                  v-else-if="nav.token.value"
+                  class="empty-state"
+                  @click="openLinkModalForCategory(category.id)"
+                >
+                  <Plus /> 向此分类添加网站
+                </button>
+              </section>
+            </template>
+          </template>
+
+          <!-- 站内搜索态：网站卡片优先顶部，目录（含二级）随后 -->
+          <template v-else>
+            <section v-if="visibleLinks.length" class="category-section">
               <div class="section-title">
                 <h2>
-                  <template v-if="isEmojiIcon(category.icon)">
-                    <span class="emoji-icon">{{ category.icon }}</span>
-                  </template>
-                  <component v-else :is="getCategoryIcon(category.icon)" :size="20" />
-                  {{ category.name }}
+                  <Search :size="17" />
+                  搜索结果
+                  <span class="section-count">{{ visibleLinks.length }}</span>
                 </h2>
               </div>
               <LinkGrid
-                v-if="categoryLinks(category.id).length"
-                :links="categoryLinks(category.id)"
+                :links="visibleLinks"
                 :compact="compact"
                 :can-manage="Boolean(nav.token.value)"
                 :hide-tools="hideTools"
                 @pin="nav.togglePin"
                 @edit="openLinkModal"
                 @delete="deleteLink"
-                @reorder="orderedIds => nav.reorderLinks(category.id, orderedIds)"
               />
-              <button
-                v-else-if="nav.token.value"
-                class="empty-state"
-                @click="openLinkModalForCategory(category.id)"
-              >
-                <Plus /> 向此分类添加网站
-              </button>
+            </section>
+
+            <section
+              v-if="matchingCategories.length"
+              class="category-section search-categories"
+            >
+              <div class="section-title">
+                <h2>
+                  <Folder :size="17" />
+                  目录
+                  <span class="section-count">{{ matchingCategories.length }}</span>
+                </h2>
+              </div>
+              <div class="search-category-list">
+                <template
+                  v-for="{ category, children } in matchingCategories"
+                  :key="category.id"
+                >
+                  <button
+                    type="button"
+                    class="search-category-item"
+                    :class="{ 'is-active': activeCategoryId === category.id }"
+                    @click="jumpTo(category.id)"
+                  >
+                    <template v-if="isEmojiIcon(category.icon)">
+                      <span class="emoji-icon">{{ category.icon }}</span>
+                    </template>
+                    <component v-else :is="getCategoryIcon(category.icon)" :size="16" />
+                    <span>{{ category.name }}</span>
+                    <span class="search-category-count">{{
+                      categoryCount(category)
+                    }}</span>
+                  </button>
+                  <button
+                    v-for="child in children"
+                    :key="child.id"
+                    type="button"
+                    class="search-category-item sub"
+                    :class="{ 'is-active': activeCategoryId === child.id }"
+                    @click="jumpTo(child.id)"
+                  >
+                    <template v-if="isEmojiIcon(child.icon)">
+                      <span class="emoji-icon">{{ child.icon }}</span>
+                    </template>
+                    <component v-else :is="getCategoryIcon(child.icon)" :size="14" />
+                    <span>{{ child.name }}</span>
+                    <span class="search-category-count">{{
+                      categoryCount(child)
+                    }}</span>
+                  </button>
+                </template>
+              </div>
             </section>
           </template>
-          <div v-if="searchQuery && !visibleLinks.length" class="no-results">
+
+          <div
+            v-if="
+              searchQuery &&
+              !externalSearch &&
+              !visibleLinks.length &&
+              !matchingCategories.length
+            "
+            class="no-results"
+          >
             <Search />
-            <h2>没有找到相关网站</h2>
+            <h2>没有找到相关网站或目录</h2>
             <p>试试更短的关键词，或切换到互联网搜索。</p>
           </div>
         </template>
@@ -1082,6 +1200,14 @@ onBeforeUnmount(() => {
             </option>
           </select></label
         >
+        <label
+          v-if="editingLink.categoryId !== 'common'"
+          class="common-toggle"
+        >
+          <input v-model="editingLink.alsoInCommon" type="checkbox" />
+          <span>同时加入「常用推荐」</span>
+          <em>该网站除显示在所选分类外，也会出现在常用推荐里</em>
+        </label>
         <div class="modal-actions">
           <button type="button" class="secondary-button" @click="linkModalOpen = false">取消</button
           ><button class="primary-button"><Check :size="17" />保存</button>
@@ -1982,6 +2108,84 @@ html.dark .flyout-item:hover {
 }
 .section-title h2 {
   flex: 1;
+}
+.section-count {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #7a8699;
+}
+/* ===== 搜索态目录结果列表 ===== */
+.search-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 560px;
+}
+.search-category-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  border: 1px solid #e6e9ef;
+  border-radius: 11px;
+  background: #fff;
+  color: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    transform 0.16s ease;
+}
+.search-category-item.sub {
+  margin-left: 20px;
+  padding: 8px 13px;
+}
+.search-category-item:hover {
+  border-color: #aabcf2;
+  transform: translateY(-1px);
+}
+.search-category-item.is-active {
+  border-color: #6a5cff;
+  background: #f3f1ff;
+}
+.search-category-item .search-category-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: #8a95a8;
+}
+html.dark .search-category-item {
+  background: #222933;
+  border-color: #343d49;
+}
+html.dark .search-category-item:hover {
+  border-color: #4a5766;
+}
+html.dark .search-category-item.is-active {
+  border-color: #7c6bff;
+  background: #2a243f;
+}
+html.dark .search-category-item .search-category-count {
+  color: #8390a3;
+}
+/* ===== 链接编辑表单：同时加入常用推荐 ===== */
+.common-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  cursor: pointer;
+}
+.common-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: #6a5cff;
+}
+.common-toggle em {
+  font-style: normal;
+  font-size: 12px;
+  color: #8a95a8;
 }
 .emoji-icon {
   display: inline-flex;

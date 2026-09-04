@@ -5,6 +5,8 @@ export interface LinkItem {
   icon?: string;
   description?: string;
   categoryId: string;
+  /** 是否同时显示在「常用推荐」里（主归属仍为 categoryId，仅叠加显示） */
+  alsoInCommon?: boolean;
   createdAt: number;
   pinned?: boolean;
   pinnedOrder?: number;
