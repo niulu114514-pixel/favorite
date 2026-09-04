@@ -377,11 +377,9 @@ const visibleLinks = computed(() => {
   return nav.links.value.filter(link => linkSearchHit(link, query))
 })
 
-// 网站是否命中搜索：自身字段命中，或其所属分类名命中（搜目录名时也带出其下网站）。
+// 网站是否命中搜索：严格按名称／网址／描述匹配，不按分类名整类带出。
 function linkSearchHit(link: LinkItem, query: string): boolean {
-  if (searchableText(link).includes(query)) return true
-  const category = categoryMap.value.get(link.categoryId)
-  return !!category && category.name.toLowerCase().includes(query)
+  return searchableText(link).includes(query)
 }
 
 function searchableText(link: LinkItem) {
@@ -419,7 +417,7 @@ function categoryLinks(categoryId: string) {
 }
 
 // 搜索态命中的目录（含二级）：仅当该目录下存在“命中”的网站（自身名称/网址/描述
-// 命中，或所属目录名命中）时才作为一个区块展示；否则直接隐藏，不显示空态。
+// 命中）时才作为一个区块展示；否则直接隐藏，不显示空态。
 const matchingCategories = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query || externalSearch.value) return []
