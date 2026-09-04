@@ -25,6 +25,7 @@ const CONFIG_SECTIONS = [
   'website',
   'mastodon',
   'weather',
+  'ticker',
   'search',
   'icon',
   'view',

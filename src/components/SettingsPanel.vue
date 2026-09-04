@@ -83,7 +83,9 @@ import type {
   Category,
   IconConfig,
   SearchConfig,
+  TickerConfig,
   WebDavBackupItem,
+  WeatherConfig,
   WebDavConfig,
 } from '../../types'
 import { DEFAULT_BACKGROUND_CONFIG } from '../../types'
@@ -97,6 +99,8 @@ type SettingsDraft = {
   webdav: WebDavConfig
   background: BackgroundConfig
   search: SearchConfig
+  weather: WeatherConfig
+  ticker: TickerConfig
   websiteTitle: string
   navigationName: string
   showPinned: boolean
@@ -117,6 +121,16 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close: []; saved: [settings: SettingsDraft] }>()
 const draft = reactive<SettingsDraft>(createDraft(props.config))
+
+const tickerCustomText = computed<string>({
+  get: () => (draft.ticker.customItems || []).join('\n'),
+  set: (value) => {
+    draft.ticker.customItems = value
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+  },
+})
 const saving = ref(false)
 const testingAI = ref(false)
 const aiMessage = ref('')
@@ -132,6 +146,8 @@ const settingsTabs = [
   { id: 'categories', label: '分类排序', icon: Folder },
   { id: 'icons', label: '图标获取', icon: ExternalLink },
   { id: 'search', label: '搜索引擎', icon: Globe2 },
+  { id: 'weather', label: '天气', icon: Cloud },
+  { id: 'ticker', label: '滚动信息', icon: TrendingUp },
   { id: 'ai', label: 'AI 助手', icon: Sparkles },
   { id: 'mcp', label: 'MCP 客户端', icon: KeyRound },
   { id: 'webdav', label: 'WebDAV 备份', icon: Cloud },
@@ -176,6 +192,18 @@ function createDraft(source: SettingsDraft): SettingsDraft {
       defaultEngine: source.search?.defaultEngine,
       customEngineUrl: source.search?.customEngineUrl,
       customEngineIcon: source.search?.customEngineIcon,
+    },
+    weather: {
+      enabled: false,
+      provider: 'qweather',
+      unit: 'celsius',
+      ...source.weather,
+    },
+    ticker: {
+      enabled: false,
+      source: 'custom',
+      customItems: source.ticker?.customItems ? [...source.ticker.customItems] : [],
+      ...source.ticker,
     },
     websiteTitle: source.websiteTitle || source.ai.websiteTitle || '',
     navigationName: source.navigationName || source.ai.navigationName || '',
@@ -270,6 +298,10 @@ function sectionValue(name: keyof SettingsDraft) {
       return d.webdav
     case 'search':
       return d.search
+    case 'weather':
+      return d.weather
+    case 'ticker':
+      return d.ticker
     default:
       return d[name]
   }
@@ -278,7 +310,16 @@ function sectionValue(name: keyof SettingsDraft) {
 /** 原始配置中该分区的取值（用于与草稿比对，只提交发生变更的分区） */
 // 可提交的配置分区：`ui`/`view` 在 SettingsDraft 上不存在独立字段，
 // 保存时被映射到 `showPinned` / `defaultViewMode`。
-type SettingsSection = 'ai' | 'background' | 'icon' | 'webdav' | 'search' | 'ui' | 'view'
+type SettingsSection =
+  | 'ai'
+  | 'background'
+  | 'icon'
+  | 'webdav'
+  | 'search'
+  | 'weather'
+  | 'ticker'
+  | 'ui'
+  | 'view'
 
 function originalSectionValue(name: SettingsSection, source: SettingsDraft) {
   switch (name) {
@@ -302,6 +343,20 @@ function originalSectionValue(name: SettingsSection, source: SettingsDraft) {
         customEngineUrl: source.search?.customEngineUrl,
         customEngineIcon: source.search?.customEngineIcon,
       }
+    case 'weather':
+      return {
+        enabled: false,
+        provider: 'qweather',
+        unit: 'celsius',
+        ...source.weather,
+      }
+    case 'ticker':
+      return {
+        enabled: false,
+        source: 'custom',
+        customItems: source.ticker?.customItems || [],
+        ...source.ticker,
+      }
     case 'ui':
       // props.config 上不存在独立的 `ui` 字段，需映射到 `showPinned`。
       return { showPinnedWebsites: source.showPinned }
@@ -318,9 +373,11 @@ async function save() {
   saveError.value = ''
   const configs: Record<string, unknown> = {}
   const sections: Array<[string, unknown]> = []
-  ;(['ai', 'background', 'icon', 'webdav', 'search'] as const).forEach(name => {
-    sections.push([name, sectionValue(name)])
-  })
+  ;(['ai', 'background', 'icon', 'webdav', 'search', 'weather', 'ticker'] as const).forEach(
+    name => {
+      sections.push([name, sectionValue(name)])
+    }
+  )
   sections.push(['ui', { showPinnedWebsites: draft.showPinned }])
   sections.push(['view', { defaultMode: draft.defaultViewMode }])
   try {
@@ -1043,6 +1100,176 @@ function formatSize(bytes: number) {
             <p v-if="!draft.search.externalSources.length" class="settings-help">
               尚未添加外部搜索引擎。添加后即可在搜索框右侧切换使用。
             </p>
+          </section>
+
+          <section
+            id="settings-weather"
+            v-if="activeSection === 'weather'"
+            class="settings-section settings-card"
+          >
+            <h3><Cloud :size="17" /> 天气</h3>
+            <p class="settings-help">
+              在顶栏显示当前天气。API Key 仅保存在服务端 KV 配置中，浏览器不会接触到密钥。当前支持
+              QWeather、OpenWeather 与 Visual Crossing。
+            </p>
+            <label class="settings-check"
+              ><input v-model="draft.weather.enabled" type="checkbox" />显示天气挂件</label
+            >
+            <div class="settings-grid">
+              <label
+                >数据源<select v-model="draft.weather.provider">
+                  <option value="qweather">QWeather（和风天气）</option>
+                  <option value="openweather">OpenWeather</option>
+                  <option value="visualcrossing">Visual Crossing</option>
+                </select></label
+              >
+              <label
+                >温度单位<select v-model="draft.weather.unit">
+                  <option value="celsius">摄氏度</option>
+                  <option value="fahrenheit">华氏度</option>
+                </select></label
+              >
+            </div>
+            <template v-if="draft.weather.provider === 'qweather'">
+              <label
+                >API Key<input
+                  v-model="draft.weather.qweatherApiKey"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="QWeather 的 API Key"
+              /></label>
+              <div class="settings-grid">
+                <label
+                  >地点（LocationID）<input
+                    v-model="draft.weather.qweatherLocation"
+                    placeholder="例如 101010100"
+                /></label>
+                <label
+                  >Host（可选）<input
+                    v-model="draft.weather.qweatherHost"
+                    placeholder="https://devapi.qweather.com"
+                /></label>
+              </div>
+            </template>
+            <template v-else-if="draft.weather.provider === 'openweather'">
+              <label
+                >API Key<input
+                  v-model="draft.weather.openweatherApiKey"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="OpenWeather 的 API Key"
+              /></label>
+              <label
+                >城市<input
+                  v-model="draft.weather.openweatherCity"
+                  placeholder="例如 Shanghai"
+              /></label>
+            </template>
+            <template v-else>
+              <label
+                >API Key<input
+                  v-model="draft.weather.visualcrossingApiKey"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="Visual Crossing 的 API Key"
+              /></label>
+              <label
+                >地点<input
+                  v-model="draft.weather.visualcrossingLocation"
+                  placeholder="例如 Beijing,China"
+              /></label>
+            </template>
+          </section>
+
+          <section
+            id="settings-ticker"
+            v-if="activeSection === 'ticker'"
+            class="settings-section settings-card"
+          >
+            <h3><TrendingUp :size="17" /> 滚动信息条</h3>
+            <p class="settings-help">
+              在顶栏下方显示一条可滚动的信息条，可接入 Mastodon、Memos 的动态，或自定义若干条文本。
+            </p>
+            <label class="settings-check"
+              ><input v-model="draft.ticker.enabled" type="checkbox" />显示滚动信息条</label
+            >
+            <div class="settings-grid">
+              <label
+                >数据源<select v-model="draft.ticker.source">
+                  <option value="mastodon">Mastodon</option>
+                  <option value="memos">Memos</option>
+                  <option value="custom">自定义内容</option>
+                </select></label
+              >
+            </div>
+            <template v-if="draft.ticker.source === 'mastodon'">
+              <div class="settings-grid">
+                <label
+                  >实例地址<input
+                    v-model="draft.ticker.mastodonInstance"
+                    placeholder="https://mastodon.social"
+                /></label>
+                <label
+                  >用户账号<input
+                    v-model="draft.ticker.mastodonUsername"
+                    placeholder="例如 @username 或全 URL"
+                /></label>
+              </div>
+              <div class="settings-grid">
+                <label
+                  >条数<select v-model.number="draft.ticker.mastodonLimit">
+                    <option :value="5">5</option>
+                    <option :value="10">10</option>
+                    <option :value="20">20</option>
+                  </select></label
+                >
+              </div>
+            </template>
+            <template v-else-if="draft.ticker.source === 'memos'">
+              <div class="settings-grid">
+                <label
+                  >Host<input
+                    v-model="draft.ticker.memosHost"
+                    placeholder="https://memos.example.com"
+                /></label>
+                <label
+                  >Creator（可选）<input
+                    v-model="draft.ticker.memosCreator"
+                    placeholder="用户 ID 或用户名"
+                /></label>
+              </div>
+              <div class="settings-grid">
+                <label
+                  >条数<select v-model.number="draft.ticker.memosLimit">
+                    <option :value="5">5</option>
+                    <option :value="10">10</option>
+                    <option :value="20">20</option>
+                  </select></label
+                >
+                <label
+                  >可见性<select v-model="draft.ticker.memosVisibility">
+                    <option value="PUBLIC">PUBLIC</option>
+                    <option value="PROTECTED">PROTECTED</option>
+                    <option value="PRIVATE">PRIVATE</option>
+                  </select></label
+                >
+              </div>
+              <label
+                >访问 Token（可选）<input
+                  v-model="draft.ticker.memosToken"
+                  type="password"
+                  autocomplete="off"
+              /></label>
+            </template>
+            <template v-else>
+              <label
+                >自定义内容（每行一条）<textarea
+                  v-model="tickerCustomText"
+                  rows="5"
+                  placeholder="每条信息占一行"
+                ></textarea></label
+              >
+            </template>
           </section>
 
           <section

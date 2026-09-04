@@ -1,7 +1,14 @@
 import { computed, reactive, ref } from 'vue'
 import type { Category, LinkItem } from '../../types'
 import { DEFAULT_CATEGORIES, INITIAL_LINKS } from '../../types'
-import type { AIConfig, IconConfig, SearchConfig, WebDavConfig } from '../../types'
+import type {
+  AIConfig,
+  IconConfig,
+  SearchConfig,
+  TickerConfig,
+  WebDavConfig,
+  WeatherConfig,
+} from '../../types'
 import { DEFAULT_BACKGROUND_CONFIG } from '../../types'
 import type { BackgroundConfig } from '../../types'
 import { DEFAULT_ICON_CONFIG, getIconUrl } from '../services/iconService'
@@ -64,6 +71,8 @@ export function useCloudNav() {
       mode: 'internal' as SearchConfig['mode'],
       externalSources: [],
     } as SearchConfig,
+    weather: { enabled: false } as WeatherConfig,
+    ticker: { enabled: false } as TickerConfig,
   })
 
   function normalize(data: { links?: LinkItem[]; categories?: Category[] }) {
@@ -186,6 +195,8 @@ export function useCloudNav() {
       customEngineUrl: search.customEngineUrl,
       customEngineIcon: search.customEngineIcon,
     }
+    config.weather = (loaded.weather || { enabled: false }) as WeatherConfig
+    config.ticker = (loaded.ticker || { enabled: false }) as TickerConfig
     document.title = config.title
   }
 

@@ -17,6 +17,7 @@ import {
   Clapperboard,
   Clock,
   Cloud,
+  CloudSun,
   Code,
   Coffee,
   Compass,
@@ -80,6 +81,8 @@ import {
 import type { Category, LinkItem } from '../types'
 import { useCloudNav } from './composables/useCloudNav'
 import { useRandomBackground } from './composables/useRandomBackground'
+import { useWeather } from './composables/useWeather'
+import { useTicker } from './composables/useTicker'
 import SettingsPanel from './components/SettingsPanel.vue'
 import LinkGrid from './components/LinkGrid.vue'
 import { favicon, handleFaviconError } from './composables/useFavicon'
@@ -89,6 +92,10 @@ import { generateLinkDescription, suggestCategory } from './services/aiService'
 
 const nav = useCloudNav()
 const background = useRandomBackground()
+const { data: weatherData, refresh: refreshWeather } = useWeather({
+  weather: nav.config.weather,
+})
+const { items: tickerItems } = useTicker({ ticker: nav.config.ticker })
 const searchQuery = ref('')
 // '' 表示站内搜索，否则为所选中外部搜索引擎的 id
 const searchMode = ref('')
@@ -96,6 +103,145 @@ const externalSearch = computed(() => searchMode.value !== '')
 const externalSources = computed(() =>
   (nav.config.search?.externalSources || []).filter(source => source.enabled && source.url)
 )
+
+// ===== 命令面板（Ctrl+K）=====
+const commandOpen = ref(false)
+const commandQuery = ref('')
+const commandIndex = ref(0)
+const commandInput = ref<HTMLInputElement | null>(null)
+
+type CommandItem = {
+  key: string
+  kind: 'action' | 'link' | 'category'
+  label: string
+  hint: string
+  icon?: Component
+  exec: () => void
+}
+
+const commandActions = computed<Array<CommandItem & { match: string[] }>>(() => [
+  {
+    key: 'settings',
+    kind: 'action',
+    label: '打开设置',
+    hint: '外观 · 背景 · 分类 · AI · 同步',
+    icon: Settings,
+    match: ['设置', 'settings', '配置', 'option'],
+    exec: () => {
+      closeCommand()
+      settingsOpen.value = true
+    },
+  },
+  {
+    key: 'theme',
+    kind: 'action',
+    label: dark.value ? '切换为浅色主题' : '切换为深色主题',
+    hint: '当前：' + (dark.value ? '深色' : '浅色'),
+    icon: dark.value ? Sun : Moon,
+    match: ['主题', 'theme', '深色', '浅色', 'dark', 'light', '模式'],
+    exec: () => {
+      closeCommand()
+      toggleTheme()
+    },
+  },
+])
+
+const commandItems = computed<CommandItem[]>(() => {
+  const q = commandQuery.value.trim().toLowerCase()
+  const items: CommandItem[] = []
+  // 操作（始终在列，空查询也展示常用操作）
+  for (const action of commandActions.value) {
+    if (
+      !q ||
+      action.label.toLowerCase().includes(q) ||
+      action.match.some(term => term.toLowerCase().includes(q))
+    ) {
+      items.push({
+        key: action.key,
+        kind: action.kind,
+        label: action.label,
+        hint: action.hint,
+        icon: action.icon,
+        exec: action.exec,
+      })
+    }
+  }
+  if (!q) return items
+  // 链接
+  for (const link of nav.links.value) {
+    const title = link.title.toLowerCase()
+    const url = link.url.toLowerCase()
+    if (title.includes(q) || url.includes(q)) {
+      items.push({
+        key: `link-${link.id}`,
+        kind: 'link',
+        label: link.title,
+        hint: link.url,
+        exec: () => {
+          closeCommand()
+          window.open(safeTargetUrl(link.url), '_blank', 'noopener')
+        },
+      })
+    }
+  }
+  // 分类（含二级）
+  for (const category of orderedCategories.value) {
+    if (category.name.toLowerCase().includes(q)) {
+      items.push({
+        key: `cat-${category.id}`,
+        kind: 'category',
+        label: category.name,
+        hint: category.parentId ? '二级分类' : '分类',
+        exec: () => {
+          closeCommand()
+          jumpTo(category.id)
+        },
+      })
+    }
+  }
+  return items
+})
+
+function openCommand() {
+  commandQuery.value = ''
+  commandIndex.value = 0
+  commandOpen.value = true
+  nextTick(() => commandInput.value?.focus())
+}
+function closeCommand() {
+  commandOpen.value = false
+}
+function moveCommand(delta: number) {
+  const len = commandItems.value.length
+  if (!len) return
+  commandIndex.value = (commandIndex.value + delta + len) % len
+}
+function runCommand() {
+  const item = commandItems.value[commandIndex.value]
+  if (item) item.exec()
+}
+function onCommandKeydown(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    openCommand()
+    return
+  }
+  if (!commandOpen.value) return
+  if (event.key === 'Escape') {
+    closeCommand()
+    return
+  }
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    moveCommand(1)
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    moveCommand(-1)
+  } else if (event.key === 'Enter') {
+    event.preventDefault()
+    runCommand()
+  }
+}
 const sidebarOpen = ref(false)
 // 默认收起侧栏：除非用户之前显式保存了展开状态（'0'），否则始终为收起态。
 const sidebarCollapsed = ref(localStorage.getItem('cloudnav_sidebar_collapsed') !== '0')
@@ -272,17 +418,19 @@ function categoryLinks(categoryId: string) {
   return linksByCategory.value.get(categoryId) || []
 }
 
-// 搜索态命中的目录（含二级）：一级名命中时展示其全部二级，二级名单独命中时也列出。
+// 搜索态命中的目录（含二级）：仅当该目录下存在“命中”的网站（自身名称/网址/描述
+// 命中，或所属目录名命中）时才作为一个区块展示；否则直接隐藏，不显示空态。
 const matchingCategories = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query || externalSearch.value) return []
   const result: Array<{ category: Category; children: Category[] }> = []
   for (const category of topLevelCategories.value) {
-    const nameHit = category.name.toLowerCase().includes(query)
-    const children = categoryChildren(category.id)
-    const childHits = children.filter(child => child.name.toLowerCase().includes(query))
-    const shownChildren = nameHit ? children : childHits
-    if (nameHit || childHits.length) result.push({ category, children: shownChildren })
+    const children = categoryChildren(category.id).filter(
+      child => categoryLinks(child.id).length > 0
+    )
+    if (categoryLinks(category.id).length > 0 || children.length) {
+      result.push({ category, children })
+    }
   }
   return result
 })
@@ -650,6 +798,8 @@ function onSettingsSaved(settings: {
   icon: typeof nav.config.icon
   webdav: typeof nav.config.webdav
   background: typeof nav.config.background
+  weather: typeof nav.config.weather
+  ticker: typeof nav.config.ticker
   websiteTitle: string
   navigationName: string
   showPinned: boolean
@@ -659,6 +809,8 @@ function onSettingsSaved(settings: {
   Object.assign(nav.config.icon, settings.icon)
   Object.assign(nav.config.webdav, settings.webdav)
   Object.assign(nav.config.background, settings.background)
+  Object.assign(nav.config.weather, settings.weather)
+  Object.assign(nav.config.ticker, settings.ticker)
   nav.config.title = settings.websiteTitle || nav.config.title
   nav.config.navigationName = settings.navigationName
   nav.config.showPinned = settings.showPinned
@@ -706,10 +858,12 @@ onMounted(async () => {
     history.replaceState({}, '', location.pathname)
   }
   window.addEventListener('keydown', handleGlobalKeydown)
+  window.addEventListener('keydown', onCommandKeydown)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
+  window.removeEventListener('keydown', onCommandKeydown)
   cancelCategoryDragSession()
   background.stopAll()
 })
@@ -917,6 +1071,19 @@ onBeforeUnmount(() => {
           </select>
         </div>
         <div class="header-actions">
+          <button
+            v-if="weatherData.enabled && weatherData.temp != null"
+            class="weather-widget"
+            :title="weatherData.text || weatherData.location || '天气'"
+            @click="refreshWeather()"
+          >
+            <CloudSun :size="16" />
+            <span class="weather-temp">{{ Math.round(weatherData.temp) }}°</span>
+            <span
+              v-if="weatherData.text"
+              class="weather-desc"
+            >{{ weatherData.text }}</span>
+          </button>
           <span
             v-if="nav.syncStatus.value !== 'idle'"
             class="sync-status"
@@ -964,6 +1131,21 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </header>
+
+      <div v-if="tickerItems.length" class="ticker-bar">
+        <span class="ticker-label"
+          ><TrendingUp :size="14" /><span>动态</span></span
+        >
+        <div class="ticker-viewport">
+          <div class="ticker-track">
+            <span
+              v-for="(item, index) in [...tickerItems, ...tickerItems]"
+              :key="index"
+              class="ticker-item"
+            >{{ item }}</span>
+          </div>
+        </div>
+      </div>
 
       <div class="content">
         <div v-if="nav.loading.value" class="loading-grid">
@@ -1114,7 +1296,6 @@ onBeforeUnmount(() => {
                   </h2>
                 </div>
                 <LinkGrid
-                  v-if="categoryLinks(category.id).length"
                   :links="categoryLinks(category.id)"
                   :compact="compact"
                   :can-manage="Boolean(nav.token.value)"
@@ -1123,9 +1304,6 @@ onBeforeUnmount(() => {
                   @edit="openLinkModal"
                   @delete="deleteLink"
                 />
-                <p v-else class="search-category-empty">
-                  该分类下暂时没有匹配的网站
-                </p>
               </section>
             </template>
           </template>
@@ -1275,6 +1453,8 @@ onBeforeUnmount(() => {
         webdav: nav.config.webdav,
         background: nav.config.background,
         search: nav.config.search,
+        weather: nav.config.weather,
+        ticker: nav.config.ticker,
         websiteTitle: nav.config.title,
         navigationName: nav.config.navigationName,
         showPinned: nav.config.showPinned,
@@ -1291,6 +1471,49 @@ onBeforeUnmount(() => {
       @close="settingsOpen = false"
       @saved="onSettingsSaved"
     />
+
+    <!-- 命令面板（Ctrl+K） -->
+    <Transition name="palette">
+      <div v-if="commandOpen" class="command-overlay" @mousedown.self="closeCommand">
+        <div class="command-panel" role="dialog" aria-modal="true" aria-label="命令面板">
+          <div class="command-input-wrap">
+            <Search :size="18" />
+            <input
+              ref="commandInput"
+              v-model="commandQuery"
+              class="command-input"
+              placeholder="搜索网站、分类或执行命令…"
+              aria-label="命令搜索"
+            />
+            <kbd class="command-kbd">ESC</kbd>
+          </div>
+          <ul class="command-list">
+            <li
+              v-for="(item, index) in commandItems"
+              :key="item.key"
+              class="command-item"
+              :class="{ selected: index === commandIndex }"
+              @mousemove="commandIndex = index"
+              @click="item.exec()"
+            >
+              <span class="command-item-icon">
+                <component
+                  v-if="item.icon"
+                  :is="item.icon"
+                  :size="16"
+                />
+                <Globe v-else-if="item.kind === 'link'" :size="16" />
+                <Folder v-else :size="16" />
+              </span>
+              <span class="command-item-label">{{ item.label }}</span>
+              <span class="command-item-hint">{{ item.hint }}</span>
+              <kbd v-if="item.kind !== 'action'" class="command-kbd small">↵</kbd>
+            </li>
+            <li v-if="!commandItems.length" class="command-empty">没有匹配的结果</li>
+          </ul>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -1915,6 +2138,79 @@ html.dark .search-switch select {
   gap: 8px;
   margin-left: auto;
 }
+.weather-widget {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #e2e6ed;
+  background: #fff;
+  color: #5b687d;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.weather-widget svg {
+  color: #f5a623;
+}
+.weather-widget .weather-temp {
+  font-weight: 700;
+  color: #1f2633;
+}
+.weather-widget:hover {
+  background: #f3f6fb;
+  color: #315ed5;
+}
+.ticker-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 34px;
+  padding: 0 16px;
+  border-bottom: 1px solid #eaf0f6;
+  background: #f6f9fc;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ticker-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: #315ed5;
+}
+.ticker-viewport {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.ticker-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 48px;
+  will-change: transform;
+  animation: ticker-scroll 30s linear infinite;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+.ticker-item {
+  font-size: 13px;
+  color: #5b687d;
+  flex: none;
+}
+@keyframes ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
 .icon-button {
   width: 38px;
   height: 38px;
@@ -2136,13 +2432,136 @@ html.dark .search-switch select {
   font-weight: 500;
   color: #7a8699;
 }
-/* ===== 搜索态：命中目录的空状态 ===== */
-.search-category-empty {
-  margin: 4px 0 18px;
+/* ===== 命令面板（Ctrl+K） ===== */
+.command-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(15, 20, 34, 0.38);
+  backdrop-filter: blur(3px);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 16vh;
+}
+.command-panel {
+  width: min(560px, calc(100vw - 32px));
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(20, 28, 54, 0.28);
+  overflow: hidden;
+}
+.command-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  color: #8a95a8;
+  border-bottom: 1px solid #eef1f7;
+}
+.command-input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  font-size: 15px;
+  background: transparent;
+  color: inherit;
+}
+.command-kbd {
+  font-size: 11px;
+  color: #8a95a8;
+  background: #f0f2f7;
+  border: 1px solid #e0e4ec;
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.command-kbd.small {
+  margin-left: auto;
+}
+.command-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.command-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.command-item.selected {
+  background: #6a5cff;
+  color: #fff;
+}
+.command-item-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: #6a5cff;
+}
+.command-item.selected .command-item-icon {
+  color: #fff;
+}
+.command-item-label {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.command-item-hint {
+  font-size: 12px;
+  color: #8a95a8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.command-item.selected .command-item-hint {
+  color: rgba(255, 255, 255, 0.8);
+}
+.command-empty {
+  padding: 20px;
+  text-align: center;
   font-size: 13px;
   color: #8a95a8;
 }
-/* ===== 链接编辑表单：同时加入常用推荐 ===== */
+.palette-enter-active,
+.palette-leave-active {
+  transition: opacity 0.16s ease;
+}
+.palette-enter-active .command-panel,
+.palette-leave-active .command-panel {
+  transition: transform 0.16s ease, opacity 0.16s ease;
+}
+.palette-enter-from,
+.palette-leave-to {
+  opacity: 0;
+}
+.palette-enter-from .command-panel,
+.palette-leave-to .command-panel {
+  transform: translateY(-8px);
+  opacity: 0;
+}
+html.dark .command-panel {
+  background: #1c232f;
+}
+html.dark .command-input-wrap {
+  border-bottom-color: #2b3542;
+}
+html.dark .command-kbd {
+  background: #2a3441;
+  border-color: #3a4656;
+}
+html.dark .command-item-hint {
+  color: #8390a3;
+}
+html.dark .command-empty {
+  color: #8390a3;
+}
 .common-toggle {
   display: flex;
   flex-direction: column;
@@ -2721,6 +3140,25 @@ html.dark .card-actions {
 html.dark .header {
   background: rgba(34, 41, 51, 0.96);
   border-color: rgba(172, 194, 230, 0.14);
+}
+html.dark .weather-widget {
+  background: #181e26;
+  border-color: #343d49;
+  color: #cdd5e0;
+}
+html.dark .weather-widget .weather-temp {
+  color: #e8edf5;
+}
+html.dark .weather-widget:hover {
+  background: #222933;
+  color: #c9d8ff;
+}
+html.dark .ticker-bar {
+  background: #181e26;
+  border-color: rgba(172, 194, 230, 0.14);
+}
+html.dark .ticker-item {
+  color: #9ba7b7;
 }
 html.dark .search-box {
   background: #181e26;
