@@ -82,6 +82,7 @@ import type {
   BackgroundConfig,
   Category,
   IconConfig,
+  SearchConfig,
   WebDavBackupItem,
   WebDavConfig,
 } from '../../types'
@@ -95,6 +96,7 @@ type SettingsDraft = {
   icon: IconConfig
   webdav: WebDavConfig
   background: BackgroundConfig
+  search: SearchConfig
   websiteTitle: string
   navigationName: string
   showPinned: boolean
@@ -129,6 +131,7 @@ const settingsTabs = [
   { id: 'background', label: '随机背景', icon: Image },
   { id: 'categories', label: '分类排序', icon: Folder },
   { id: 'icons', label: '图标获取', icon: ExternalLink },
+  { id: 'search', label: '搜索引擎', icon: Globe2 },
   { id: 'ai', label: 'AI 助手', icon: Sparkles },
   { id: 'mcp', label: 'MCP 客户端', icon: KeyRound },
   { id: 'webdav', label: 'WebDAV 备份', icon: Cloud },
@@ -165,6 +168,15 @@ function createDraft(source: SettingsDraft): SettingsDraft {
     icon: { ...DEFAULT_ICON_CONFIG, ...source.icon },
     webdav: { url: '', username: '', password: '', enabled: false, ...source.webdav },
     background: { ...DEFAULT_BACKGROUND_CONFIG, ...source.background },
+    search: {
+      mode: source.search?.mode || 'internal',
+      externalSources: source.search?.externalSources
+        ? JSON.parse(JSON.stringify(source.search.externalSources))
+        : [],
+      defaultEngine: source.search?.defaultEngine,
+      customEngineUrl: source.search?.customEngineUrl,
+      customEngineIcon: source.search?.customEngineIcon,
+    },
     websiteTitle: source.websiteTitle || source.ai.websiteTitle || '',
     navigationName: source.navigationName || source.ai.navigationName || '',
     showPinned: source.showPinned,
@@ -231,6 +243,20 @@ function previewBg() {
   bgPreviewUrl.value = buildBgPreviewUrl()
 }
 
+// ===== 搜索引擎：外部源管理 =====
+function addSearchSource() {
+  draft.search.externalSources.push({
+    id: `src-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    name: '',
+    url: '',
+    enabled: true,
+    createdAt: Date.now(),
+  })
+}
+function removeSearchSource(index: number) {
+  draft.search.externalSources.splice(index, 1)
+}
+
 function sectionValue(name: keyof SettingsDraft) {
   const d = draft
   switch (name) {
@@ -242,6 +268,8 @@ function sectionValue(name: keyof SettingsDraft) {
       return d.icon
     case 'webdav':
       return d.webdav
+    case 'search':
+      return d.search
     default:
       return d[name]
   }
@@ -250,7 +278,7 @@ function sectionValue(name: keyof SettingsDraft) {
 /** 原始配置中该分区的取值（用于与草稿比对，只提交发生变更的分区） */
 // 可提交的配置分区：`ui`/`view` 在 SettingsDraft 上不存在独立字段，
 // 保存时被映射到 `showPinned` / `defaultViewMode`。
-type SettingsSection = 'ai' | 'background' | 'icon' | 'webdav' | 'ui' | 'view'
+type SettingsSection = 'ai' | 'background' | 'icon' | 'webdav' | 'search' | 'ui' | 'view'
 
 function originalSectionValue(name: SettingsSection, source: SettingsDraft) {
   switch (name) {
@@ -266,6 +294,14 @@ function originalSectionValue(name: SettingsSection, source: SettingsDraft) {
       return source.icon
     case 'webdav':
       return source.webdav
+    case 'search':
+      return {
+        mode: source.search?.mode || 'internal',
+        externalSources: source.search?.externalSources || [],
+        defaultEngine: source.search?.defaultEngine,
+        customEngineUrl: source.search?.customEngineUrl,
+        customEngineIcon: source.search?.customEngineIcon,
+      }
     case 'ui':
       // props.config 上不存在独立的 `ui` 字段，需映射到 `showPinned`。
       return { showPinnedWebsites: source.showPinned }
@@ -282,7 +318,7 @@ async function save() {
   saveError.value = ''
   const configs: Record<string, unknown> = {}
   const sections: Array<[string, unknown]> = []
-  ;(['ai', 'background', 'icon', 'webdav'] as const).forEach(name => {
+  ;(['ai', 'background', 'icon', 'webdav', 'search'] as const).forEach(name => {
     sections.push([name, sectionValue(name)])
   })
   sections.push(['ui', { showPinnedWebsites: draft.showPinned }])
@@ -962,6 +998,54 @@ function formatSize(bytes: number) {
           </section>
 
           <section
+            id="settings-search"
+            v-if="activeSection === 'search'"
+            class="settings-section settings-card"
+          >
+            <h3><Globe2 :size="17" /> 搜索引擎</h3>
+            <p class="settings-help">
+              在顶栏搜索框可切换到外部搜索。下方维护外部搜索引擎列表；每个源的 URL
+              支持用 <code>{query}</code> 占位符表示关键词（例如
+              <code>https://www.google.com/search?q={query}</code>）。未含占位符时，关键词会作为
+              <code>?q=</code> 参数追加。
+            </p>
+            <div
+              class="search-source-list"
+              v-if="draft.search.externalSources.length"
+            >
+              <div
+                v-for="(source, index) in draft.search.externalSources"
+                :key="source.id"
+                class="search-source-row"
+              >
+                <label class="settings-check search-source-enable"
+                  ><input v-model="source.enabled" type="checkbox" /></label
+                >
+                <label class="search-source-field"
+                  >名称<input v-model="source.name" placeholder="Google" /></label
+                >
+                <label class="search-source-field search-source-url"
+                  >URL 模板<input v-model="source.url" placeholder="https://www.google.com/search?q={query}" /></label
+                >
+                <button
+                  type="button"
+                  class="icon-button"
+                  title="删除该搜索引擎"
+                  @click="removeSearchSource(index)"
+                >
+                  <Trash2 :size="15" />
+                </button>
+              </div>
+            </div>
+            <button type="button" class="secondary-button" @click="addSearchSource">
+              <Plus :size="15" />添加搜索引擎
+            </button>
+            <p v-if="!draft.search.externalSources.length" class="settings-help">
+              尚未添加外部搜索引擎。添加后即可在搜索框右侧切换使用。
+            </p>
+          </section>
+
+          <section
             id="settings-ai"
             v-if="activeSection === 'ai'"
             class="settings-section settings-card"
@@ -1537,6 +1621,38 @@ html.dark .settings-backdrop {
   width: 17px;
   height: 17px;
   accent-color: var(--c-primary);
+}
+.search-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.search-source-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e2e6ed;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.5);
+}
+.search-source-row .search-source-enable {
+  flex: 0 0 auto;
+  margin: 0 !important;
+}
+.search-source-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.search-source-field input {
+  font-size: 13px;
+}
+html.dark .search-source-row {
+  background: rgba(34, 41, 51, 0.6);
+  border-color: #343d49;
 }
 .settings-inline {
   display: flex;

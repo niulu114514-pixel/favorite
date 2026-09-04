@@ -90,7 +90,12 @@ import { generateLinkDescription, suggestCategory } from './services/aiService'
 const nav = useCloudNav()
 const background = useRandomBackground()
 const searchQuery = ref('')
-const externalSearch = ref(false)
+// '' 表示站内搜索，否则为所选中外部搜索引擎的 id
+const searchMode = ref('')
+const externalSearch = computed(() => searchMode.value !== '')
+const externalSources = computed(() =>
+  (nav.config.search?.externalSources || []).filter(source => source.enabled && source.url)
+)
 const sidebarOpen = ref(false)
 // 默认收起侧栏：除非用户之前显式保存了展开状态（'0'），否则始终为收起态。
 const sidebarCollapsed = ref(localStorage.getItem('cloudnav_sidebar_collapsed') !== '0')
@@ -402,7 +407,13 @@ watch(
 function submitSearch() {
   const query = searchQuery.value.trim()
   if (!query || !externalSearch.value) return
-  window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener')
+  const source = externalSources.value.find(s => s.id === searchMode.value)
+  let url = source?.url || ''
+  const encoded = encodeURIComponent(query)
+  if (url.includes('{query}')) url = url.replace(/\{query\}/g, encoded)
+  else if (url.includes('%s')) url = url.replace(/%s/g, encoded)
+  else url = url.replace(/[?&]$/, '') + (url.includes('?') ? '&' : '?') + 'q=' + encoded
+  window.open(url, '_blank', 'noopener')
 }
 
 function jumpTo(id: string) {
@@ -882,11 +893,18 @@ onBeforeUnmount(() => {
             <X :size="16" />
           </button>
         </form>
-        <label class="search-switch"
-          ><input v-model="externalSearch" type="checkbox" /><span>{{
-            externalSearch ? 'Google' : '站内'
-          }}</span></label
-        >
+        <div v-if="externalSources.length" class="search-switch">
+          <select v-model="searchMode" aria-label="搜索范围">
+            <option value="">站内</option>
+            <option
+              v-for="source in externalSources"
+              :key="source.id"
+              :value="source.id"
+            >
+              {{ source.name || '外部搜索' }}
+            </option>
+          </select>
+        </div>
         <div class="header-actions">
           <span
             v-if="nav.syncStatus.value !== 'idle'"
@@ -1260,6 +1278,7 @@ onBeforeUnmount(() => {
         icon: nav.config.icon,
         webdav: nav.config.webdav,
         background: nav.config.background,
+        search: nav.config.search,
         websiteTitle: nav.config.title,
         navigationName: nav.config.navigationName,
         showPinned: nav.config.showPinned,
@@ -1880,13 +1899,19 @@ html.dark .flyout-item:hover {
   color: inherit;
   cursor: pointer;
 }
-.search-switch {
+.search-switch select {
   font-size: 12px;
-  color: #647087;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  white-space: nowrap;
+  color: #5a6478;
+  background: #fff;
+  border: 1px solid #e2e6ed;
+  border-radius: 8px;
+  padding: 5px 6px;
+  cursor: pointer;
+}
+html.dark .search-switch select {
+  background: #222933;
+  color: #cdd5e0;
+  border-color: #343d49;
 }
 .header-actions {
   display: flex;

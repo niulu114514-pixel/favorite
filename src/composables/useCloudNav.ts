@@ -1,7 +1,7 @@
 import { computed, reactive, ref } from 'vue'
 import type { Category, LinkItem } from '../../types'
 import { DEFAULT_CATEGORIES, INITIAL_LINKS } from '../../types'
-import type { AIConfig, IconConfig, WebDavConfig } from '../../types'
+import type { AIConfig, IconConfig, SearchConfig, WebDavConfig } from '../../types'
 import { DEFAULT_BACKGROUND_CONFIG } from '../../types'
 import type { BackgroundConfig } from '../../types'
 import { DEFAULT_ICON_CONFIG, getIconUrl } from '../services/iconService'
@@ -60,6 +60,10 @@ export function useCloudNav() {
       enabled: false,
     } as WebDavConfig,
     background: { ...DEFAULT_BACKGROUND_CONFIG } as BackgroundConfig,
+    search: {
+      mode: 'internal' as SearchConfig['mode'],
+      externalSources: [],
+    } as SearchConfig,
   })
 
   function normalize(data: { links?: LinkItem[]; categories?: Category[] }) {
@@ -174,6 +178,14 @@ export function useCloudNav() {
     config.navigationName = ai.navigationName || config.navigationName
     config.defaultViewMode = view.defaultMode || config.defaultViewMode
     config.showPinned = ui.showPinnedWebsites ?? config.showPinned
+    const search = (loaded.search || {}) as Partial<SearchConfig>
+    config.search = {
+      mode: search.mode === 'external' ? 'external' : 'internal',
+      externalSources: Array.isArray(search.externalSources) ? search.externalSources : [],
+      defaultEngine: search.defaultEngine,
+      customEngineUrl: search.customEngineUrl,
+      customEngineIcon: search.customEngineIcon,
+    }
     document.title = config.title
   }
 
