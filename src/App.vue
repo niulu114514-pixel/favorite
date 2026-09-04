@@ -287,6 +287,17 @@ const matchingCategories = computed(() => {
   return result
 })
 
+// 搜索态底部需要以“正常分类区块”形态展示命中的目录；一级分区的所有子分区
+//（一级命中名 / 二级命中名）一律按完整区块列出，父后接子，浏览观感与正常一致。
+const matchedCategoryIds = computed(() => {
+  const ids = new Set<string>()
+  for (const { category, children } of matchingCategories.value) {
+    ids.add(category.id)
+    for (const child of children) ids.add(child.id)
+  }
+  return ids
+})
+
 function categoryCount(category: Category) {
   const direct = categoryLinks(category.id).length
   if (category.parentId) return direct
@@ -1060,13 +1071,13 @@ onBeforeUnmount(() => {
             </template>
           </template>
 
-          <!-- 站内搜索态：网站卡片优先顶部，目录（含二级）随后 -->
+          <!-- 站内搜索态：顶部汇总命中的网站卡片，底部以正常形态展开命中的目录（含二级） -->
           <template v-else>
             <section v-if="visibleLinks.length" class="category-section">
               <div class="section-title">
                 <h2>
                   <Search :size="17" />
-                  搜索结果
+                  命中的网站
                   <span class="section-count">{{ visibleLinks.length }}</span>
                 </h2>
               </div>
@@ -1081,57 +1092,42 @@ onBeforeUnmount(() => {
               />
             </section>
 
-            <section
-              v-if="matchingCategories.length"
-              class="category-section search-categories"
-            >
-              <div class="section-title">
-                <h2>
-                  <Folder :size="17" />
-                  目录
-                  <span class="section-count">{{ matchingCategories.length }}</span>
-                </h2>
-              </div>
-              <div class="search-category-list">
-                <template
-                  v-for="{ category, children } in matchingCategories"
-                  :key="category.id"
-                >
-                  <button
-                    type="button"
-                    class="search-category-item"
-                    :class="{ 'is-active': activeCategoryId === category.id }"
-                    @click="jumpTo(category.id)"
-                  >
+            <!-- 命中的目录：结构与正常浏览时一致，父分区链接子分区 -->
+            <template v-for="category in orderedCategories" :key="category.id">
+              <section
+                v-if="matchedCategoryIds.has(category.id)"
+                :id="`category-${category.id}`"
+                class="category-section"
+                :class="{
+                  'is-active': activeCategoryId === category.id,
+                  'subcategory-section': Boolean(category.parentId),
+                }"
+              >
+                <div class="section-title">
+                  <h2>
                     <template v-if="isEmojiIcon(category.icon)">
                       <span class="emoji-icon">{{ category.icon }}</span>
                     </template>
-                    <component v-else :is="getCategoryIcon(category.icon)" :size="16" />
-                    <span>{{ category.name }}</span>
-                    <span class="search-category-count">{{
-                      categoryCount(category)
-                    }}</span>
-                  </button>
-                  <button
-                    v-for="child in children"
-                    :key="child.id"
-                    type="button"
-                    class="search-category-item sub"
-                    :class="{ 'is-active': activeCategoryId === child.id }"
-                    @click="jumpTo(child.id)"
-                  >
-                    <template v-if="isEmojiIcon(child.icon)">
-                      <span class="emoji-icon">{{ child.icon }}</span>
-                    </template>
-                    <component v-else :is="getCategoryIcon(child.icon)" :size="14" />
-                    <span>{{ child.name }}</span>
-                    <span class="search-category-count">{{
-                      categoryCount(child)
-                    }}</span>
-                  </button>
-                </template>
-              </div>
-            </section>
+                    <component v-else :is="getCategoryIcon(category.icon)" :size="20" />
+                    {{ category.name }}
+                    <span class="section-count">{{ categoryCount(category) }}</span>
+                  </h2>
+                </div>
+                <LinkGrid
+                  v-if="categoryLinks(category.id).length"
+                  :links="categoryLinks(category.id)"
+                  :compact="compact"
+                  :can-manage="Boolean(nav.token.value)"
+                  :hide-tools="hideTools"
+                  @pin="nav.togglePin"
+                  @edit="openLinkModal"
+                  @delete="deleteLink"
+                />
+                <p v-else class="search-category-empty">
+                  该分类下暂时没有匹配的网站
+                </p>
+              </section>
+            </template>
           </template>
 
           <div
@@ -2140,60 +2136,11 @@ html.dark .search-switch select {
   font-weight: 500;
   color: #7a8699;
 }
-/* ===== 搜索态目录结果列表 ===== */
-.search-category-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-width: 560px;
-}
-.search-category-item {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 10px 14px;
-  border: 1px solid #e6e9ef;
-  border-radius: 11px;
-  background: #fff;
-  color: inherit;
-  font-size: 14px;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color 0.16s ease,
-    background-color 0.16s ease,
-    transform 0.16s ease;
-}
-.search-category-item.sub {
-  margin-left: 20px;
-  padding: 8px 13px;
-}
-.search-category-item:hover {
-  border-color: #aabcf2;
-  transform: translateY(-1px);
-}
-.search-category-item.is-active {
-  border-color: #6a5cff;
-  background: #f3f1ff;
-}
-.search-category-item .search-category-count {
-  margin-left: auto;
-  font-size: 12px;
+/* ===== 搜索态：命中目录的空状态 ===== */
+.search-category-empty {
+  margin: 4px 0 18px;
+  font-size: 13px;
   color: #8a95a8;
-}
-html.dark .search-category-item {
-  background: #222933;
-  border-color: #343d49;
-}
-html.dark .search-category-item:hover {
-  border-color: #4a5766;
-}
-html.dark .search-category-item.is-active {
-  border-color: #7c6bff;
-  background: #2a243f;
-}
-html.dark .search-category-item .search-category-count {
-  color: #8390a3;
 }
 /* ===== 链接编辑表单：同时加入常用推荐 ===== */
 .common-toggle {
