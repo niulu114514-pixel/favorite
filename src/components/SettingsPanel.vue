@@ -1204,7 +1204,7 @@ function formatSize(bytes: number) {
               >
             </div>
             <p v-if="draft.ticker.source === 'yiyan'" class="settings-help">
-              每条随机从 tenapi 每日一言接口获取并滚动展示，无需额外配置。
+              每条随机从一言官方接口获取并滚动展示，无需额外配置。
             </p>
             <template v-if="draft.ticker.source === 'mastodon'">
               <div class="settings-grid">

@@ -88,24 +88,22 @@ async function fetchMemos(cfg) {
   return { enabled: true, items }
 }
 
-const YIYAN_ENDPOINT = 'https://tenapi.cn/v2/yiyan'
+// 一言官方接口（hitokoto）。GET 随机返回一条，并行多取几次组成多条文案。
+const YIYAN_ENDPOINT = 'https://v1.hitokoto.cn/?encode=json'
 const YIYAN_COUNT = 8 // 随机取 8 条，让滚动条内容更丰富
 
-// 每日一言：tenapi 每次返回一条随机一言，并行多取几次组成多条文案。
 async function fetchYiyan() {
   const tasks = Array.from({ length: YIYAN_COUNT }, async () => {
     try {
-      const res = await fetch(YIYAN_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'format=json',
-      })
+      const res = await fetch(YIYAN_ENDPOINT, { headers: { Accept: 'application/json' } })
       if (!res.ok) return null
       const data = await res.json()
-      if (!data || data.code !== 200 || !data.data || !data.data.hitokoto) return null
-      const d = data.data
-      const author = typeof d.author === 'string' && d.author ? d.author : ''
-      return (typeof d.source === 'string' && d.source ? `${d.hitokoto} —— ${author || d.source}` : author ? `${d.hitokoto} —— ${author}` : d.hitokoto)
+      if (!data || typeof data.hitokoto !== 'string' || !data.hitokoto) return null
+      const author = typeof data.from_who === 'string' && data.from_who ? data.from_who : ''
+      const source = typeof data.from === 'string' && data.from ? data.from : ''
+      return author || source
+        ? `${data.hitokoto} —— ${author || source}`
+        : data.hitokoto
     } catch {
       return null
     }
