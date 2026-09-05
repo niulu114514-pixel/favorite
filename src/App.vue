@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue'
 import type { Component } from 'vue'
 import {
   ArrowUpRight,
@@ -83,18 +91,17 @@ import { useCloudNav } from './composables/useCloudNav'
 import { useRandomBackground } from './composables/useRandomBackground'
 import { useWeather } from './composables/useWeather'
 import { useTicker } from './composables/useTicker'
-import SettingsPanel from './components/SettingsPanel.vue'
 import LinkGrid from './components/LinkGrid.vue'
 import { favicon, handleFaviconError } from './composables/useFavicon'
 import { isEmojiIcon } from './services/categoryIconUtil'
 import { safeTargetUrl } from './utils/url'
 import { generateLinkDescription, suggestCategory } from './services/aiService'
 
+const SettingsPanel = defineAsyncComponent(() => import('./components/SettingsPanel.vue'))
+
 const nav = useCloudNav()
 const background = useRandomBackground()
-const { data: weatherData, refresh: refreshWeather } = useWeather({
-  weather: nav.config.weather,
-})
+const { data: weatherData, refresh: refreshWeather, stopAll: stopWeather } = useWeather(nav.config)
 const { items: tickerItems } = useTicker(nav.config)
 const searchQuery = ref('')
 // '' 表示站内搜索，否则为所选中外部搜索引擎的 id
@@ -200,6 +207,10 @@ const commandItems = computed<CommandItem[]>(() => {
     }
   }
   return items
+})
+
+watch(commandQuery, () => {
+  commandIndex.value = 0
 })
 
 function openCommand() {
@@ -735,13 +746,8 @@ async function generateWithAI() {
   aiError.value = ''
   try {
     const [description, categoryId] = await Promise.all([
-      generateLinkDescription(editingLink.value.title, editingLink.value.url, nav.config.ai),
-      suggestCategory(
-        editingLink.value.title,
-        editingLink.value.url,
-        nav.categories.value,
-        nav.config.ai
-      ),
+      generateLinkDescription(editingLink.value.title, editingLink.value.url),
+      suggestCategory(editingLink.value.title, editingLink.value.url, nav.categories.value),
     ])
     if (description) editingLink.value.description = description
     if (categoryId) editingLink.value.categoryId = categoryId
@@ -817,7 +823,11 @@ function onSettingsSaved(settings: {
 }
 
 function handleGlobalKeydown(event: KeyboardEvent) {
-  if (event.key === '/' && document.activeElement?.tagName !== 'INPUT') {
+  const active = document.activeElement as HTMLElement | null
+  const isEditing =
+    active?.matches('input, textarea, select, [contenteditable="true"]') ||
+    active?.isContentEditable
+  if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey && !isEditing) {
     event.preventDefault()
     void nextTick(() => searchInput.value?.focus())
   }
@@ -834,7 +844,8 @@ const bgStyle = computed(() => {
 
 /** 暗色遮罩，保证前景可读 */
 const bgOverlayColor = computed(
-  () => `rgba(18, 27, 42, ${Math.min(0.85, Math.max(0, Number(nav.config.background.overlay) || 0))})`
+  () =>
+    `rgba(18, 27, 42, ${Math.min(0.85, Math.max(0, Number(nav.config.background.overlay) || 0))})`
 )
 
 watch(
@@ -863,6 +874,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('keydown', onCommandKeydown)
   cancelCategoryDragSession()
+  stopWeather()
   background.stopAll()
 })
 </script>
@@ -911,9 +923,17 @@ onBeforeUnmount(() => {
           @click="toggleSidebar"
           @keydown.enter.prevent="toggleSidebar"
           @keydown.space.prevent="toggleSidebar"
-        ><Bookmark :size="20" /></div>
+        >
+          <Bookmark :size="20" />
+        </div>
         <strong>{{ nav.config.navigationName }}</strong
-        ><button class="icon-button mobile-only" @click="sidebarOpen = false"><X /></button>
+        ><button
+          class="icon-button mobile-only"
+          aria-label="关闭分类目录"
+          @click="sidebarOpen = false"
+        >
+          <X />
+        </button>
       </div>
       <nav class="category-nav">
         <div class="category-section-label">分类目录</div>
@@ -922,6 +942,7 @@ onBeforeUnmount(() => {
             <button
               type="button"
               :data-sort-category="category.id"
+              :aria-label="`${category.name}，${categoryCount(category)} 个网站`"
               :aria-current="activeCategoryId === category.id ? 'location' : undefined"
               :aria-expanded="
                 categoryChildren(category.id).length ? isCategoryExpanded(category.id) : undefined
@@ -958,10 +979,8 @@ onBeforeUnmount(() => {
                 @click.stop="toggleCategoryExpanded($event, category.id)"
                 @keydown.enter.stop="toggleCategoryExpanded($event, category.id)"
                 @keydown.space.prevent.stop="toggleCategoryExpanded($event, category.id)"
-                ><ChevronRight
-                  :size="15"
-                  :class="{ expanded: isCategoryExpanded(category.id) }" /></span
-              >
+                ><ChevronRight :size="15" :class="{ expanded: isCategoryExpanded(category.id) }"
+              /></span>
             </button>
             <div
               v-if="sidebarCollapsed"
@@ -972,11 +991,7 @@ onBeforeUnmount(() => {
                 <template v-if="isEmojiIcon(category.icon)">
                   <span class="emoji-icon">{{ category.icon }}</span>
                 </template>
-                <component
-                  v-else
-                  :is="getCategoryIcon(category.icon)"
-                  :size="14"
-                />
+                <component v-else :is="getCategoryIcon(category.icon)" :size="14" />
                 <span class="flyout-name">{{ category.name }}</span>
               </div>
               <template v-if="categoryChildren(category.id).length">
@@ -1000,37 +1015,35 @@ onBeforeUnmount(() => {
           </div>
           <transition-group name="subcat" tag="div" class="subcat-group">
             <template v-for="child in categoryChildren(category.id)" :key="child.id">
-              <div
-                v-if="isCategoryExpanded(category.id)"
-                :key="child.id"
-                class="category-nav-item"
-              >
+              <div v-if="isCategoryExpanded(category.id)" :key="child.id" class="category-nav-item">
                 <button
                   type="button"
                   class="subcategory"
-                :data-sort-category="child.id"
-                :aria-current="activeCategoryId === child.id ? 'location' : undefined"
-                :title="'长按拖动可调整分类顺序'"
-                :class="{
-                  active: activeCategoryId === child.id,
-                  dragging: dragCategoryId === child.id,
-                  'drag-hover':
-                    dragHoverId === child.id &&
-                    dragCategoryId !== null &&
-                    dragCategoryId !== child.id,
-                }"
-                @contextmenu.prevent
-                @pointerdown="startCategoryPress($event, child)"
-                @pointerup="cancelCategoryPress"
-                @pointercancel="cancelCategoryPress"
-                @click="jumpTo(child.id)"
-              >
-                <template v-if="isEmojiIcon(child.icon)">
-                  <span class="emoji-icon">{{ child.icon }}</span>
-                </template>
-                <component v-else :is="getCategoryIcon(child.icon)" :size="16" /><span
-                  >{{ child.name }}</span
-                ><span class="category-count">{{ categoryCount(child) }}</span>
+                  :aria-label="`${child.name}，${categoryCount(child)} 个网站`"
+                  :data-sort-category="child.id"
+                  :aria-current="activeCategoryId === child.id ? 'location' : undefined"
+                  :title="'长按拖动可调整分类顺序'"
+                  :class="{
+                    active: activeCategoryId === child.id,
+                    dragging: dragCategoryId === child.id,
+                    'drag-hover':
+                      dragHoverId === child.id &&
+                      dragCategoryId !== null &&
+                      dragCategoryId !== child.id,
+                  }"
+                  @contextmenu.prevent
+                  @pointerdown="startCategoryPress($event, child)"
+                  @pointerup="cancelCategoryPress"
+                  @pointercancel="cancelCategoryPress"
+                  @click="jumpTo(child.id)"
+                >
+                  <template v-if="isEmojiIcon(child.icon)">
+                    <span class="emoji-icon">{{ child.icon }}</span>
+                  </template>
+                  <component v-else :is="getCategoryIcon(child.icon)" :size="16" /><span>{{
+                    child.name
+                  }}</span
+                  ><span class="category-count">{{ categoryCount(child) }}</span>
                 </button>
               </div>
             </template>
@@ -1062,11 +1075,7 @@ onBeforeUnmount(() => {
         <div v-if="externalSources.length" class="search-switch">
           <select v-model="searchMode" aria-label="搜索范围">
             <option value="">站内</option>
-            <option
-              v-for="source in externalSources"
-              :key="source.id"
-              :value="source.id"
-            >
+            <option v-for="source in externalSources" :key="source.id" :value="source.id">
               {{ source.name || '外部搜索' }}
             </option>
           </select>
@@ -1080,10 +1089,7 @@ onBeforeUnmount(() => {
           >
             <CloudSun :size="16" />
             <span class="weather-temp">{{ Math.round(weatherData.temp) }}°</span>
-            <span
-              v-if="weatherData.text"
-              class="weather-desc"
-            >{{ weatherData.text }}</span>
+            <span v-if="weatherData.text" class="weather-desc">{{ weatherData.text }}</span>
           </button>
           <span
             v-if="nav.syncStatus.value !== 'idle'"
@@ -1113,7 +1119,13 @@ onBeforeUnmount(() => {
           >
             <EyeOff v-if="hideTools" /><Eye v-else />
           </button>
-          <button class="icon-button" title="切换主题" @click="toggleTheme">
+          <button
+            class="icon-button"
+            :title="dark ? '切换为浅色主题' : '切换为深色主题'"
+            :aria-label="dark ? '切换为浅色主题' : '切换为深色主题'"
+            :aria-pressed="dark"
+            @click="toggleTheme"
+          >
             <Sun v-if="dark" /><Moon v-else />
           </button>
           <button
@@ -1134,16 +1146,15 @@ onBeforeUnmount(() => {
       </header>
 
       <div v-if="tickerItems.length" class="ticker-bar">
-        <span class="ticker-label"
-          ><TrendingUp :size="14" /><span>动态</span></span
-        >
+        <span class="ticker-label"><TrendingUp :size="14" /><span>动态</span></span>
         <div class="ticker-viewport">
           <div class="ticker-track">
             <span
               v-for="(item, index) in [...tickerItems, ...tickerItems]"
               :key="index"
               class="ticker-item"
-            >{{ item }}</span>
+              >{{ item }}</span
+            >
           </div>
         </div>
       </div>
@@ -1154,11 +1165,7 @@ onBeforeUnmount(() => {
         </div>
         <template v-else>
           <section
-            v-if="
-              nav.config.showPinned &&
-              nav.pinnedLinks.value.length &&
-              !searchQuery
-            "
+            v-if="nav.config.showPinned && nav.pinnedLinks.value.length && !searchQuery"
             class="category-section pinned-section"
           >
             <div class="pinned-head">
@@ -1217,6 +1224,7 @@ onBeforeUnmount(() => {
                   (!searchQuery.trim() || categoryLinks(category.id).length)
                 "
                 :id="`category-${category.id}`"
+                data-category-section
                 class="category-section"
                 :class="{
                   'is-active': activeCategoryId === category.id,
@@ -1254,32 +1262,14 @@ onBeforeUnmount(() => {
             </template>
           </template>
 
-          <!-- 站内搜索态：顶部汇总命中的网站卡片，底部以正常形态展开命中的目录（含二级） -->
+          <!-- 站内搜索态：按目录展示命中结果，避免同一网站在汇总区重复出现 -->
           <template v-else>
-            <section v-if="visibleLinks.length" class="category-section">
-              <div class="section-title">
-                <h2>
-                  <Search :size="17" />
-                  命中的网站
-                  <span class="section-count">{{ visibleLinks.length }}</span>
-                </h2>
-              </div>
-              <LinkGrid
-                :links="visibleLinks"
-                :compact="compact"
-                :can-manage="Boolean(nav.token.value)"
-                :hide-tools="hideTools"
-                @pin="nav.togglePin"
-                @edit="openLinkModal"
-                @delete="deleteLink"
-              />
-            </section>
-
             <!-- 命中的目录：结构与正常浏览时一致，父分区链接子分区 -->
             <template v-for="category in orderedCategories" :key="category.id">
               <section
                 v-if="matchedCategoryIds.has(category.id)"
                 :id="`category-${category.id}`"
+                data-category-section
                 class="category-section"
                 :class="{
                   'is-active': activeCategoryId === category.id,
@@ -1311,10 +1301,7 @@ onBeforeUnmount(() => {
 
           <div
             v-if="
-              searchQuery &&
-              !externalSearch &&
-              !visibleLinks.length &&
-              !matchingCategories.length
+              searchQuery && !externalSearch && !visibleLinks.length && !matchingCategories.length
             "
             class="no-results"
           >
@@ -1326,13 +1313,27 @@ onBeforeUnmount(() => {
       </div>
     </main>
 
-    <div v-if="linkModalOpen" class="modal-backdrop"><form class="modal" @submit.prevent="submitLink">
+    <div v-if="linkModalOpen" class="modal-backdrop" @click.self="linkModalOpen = false">
+      <form
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="link-modal-title"
+        @submit.prevent="submitLink"
+      >
         <div class="modal-title">
           <div>
-            <h2>{{ editingLink.id ? '编辑网站' : '添加网站' }}</h2>
+            <h2 id="link-modal-title">{{ editingLink.id ? '编辑网站' : '添加网站' }}</h2>
             <p>保存后将同步到本地和云端。</p>
           </div>
-          <button type="button" class="icon-button" @click="linkModalOpen = false"><X /></button>
+          <button
+            type="button"
+            class="icon-button"
+            aria-label="关闭"
+            @click="linkModalOpen = false"
+          >
+            <X />
+          </button>
         </div>
         <label
           >名称<input
@@ -1369,7 +1370,7 @@ onBeforeUnmount(() => {
               :src="editingFaviconPreview"
               class="icon-preview"
               alt="图标预览"
-              @error="(e) => (e.target as HTMLImageElement).src = ''"
+              @error="e => ((e.target as HTMLImageElement).src = '')"
             />
             <div v-else class="icon-preview icon-preview-empty"><Image :size="22" /></div>
             <p class="icon-picker-hint">自动获取该网址自身的 favicon，输入网址即可实时预览。</p>
@@ -1393,10 +1394,7 @@ onBeforeUnmount(() => {
             </option>
           </select></label
         >
-        <label
-          v-if="editingLink.categoryId !== 'common'"
-          class="common-toggle"
-        >
+        <label v-if="editingLink.categoryId !== 'common'" class="common-toggle">
           <input v-model="editingLink.alsoInCommon" type="checkbox" />
           <span>同时加入「常用推荐」</span>
           <em>该网站除显示在所选分类外，也会出现在常用推荐里</em>
@@ -1409,12 +1407,18 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-if="authModalOpen" class="modal-backdrop" @click.self="authModalOpen = false">
-      <form class="login-card" @submit.prevent="submitLogin">
+      <form
+        class="login-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="login-dialog-title"
+        @submit.prevent="submitLogin"
+      >
         <button type="button" class="login-close" aria-label="关闭" @click="authModalOpen = false">
           <X />
         </button>
         <div class="login-badge"><LogIn :size="22" /></div>
-        <h2 class="login-title">管理登录</h2>
+        <h2 id="login-dialog-title" class="login-title">管理登录</h2>
         <p class="login-sub">输入管理密码以编辑分类、网站与设置</p>
         <label class="login-field">
           <span>管理密码</span>
@@ -1447,6 +1451,7 @@ onBeforeUnmount(() => {
     </div>
 
     <SettingsPanel
+      v-if="settingsOpen"
       :open="settingsOpen"
       :config="{
         ai: nav.config.ai,
@@ -1498,11 +1503,7 @@ onBeforeUnmount(() => {
               @click="item.exec()"
             >
               <span class="command-item-icon">
-                <component
-                  v-if="item.icon"
-                  :is="item.icon"
-                  :size="16"
-                />
+                <component v-if="item.icon" :is="item.icon" :size="16" />
                 <Globe v-else-if="item.kind === 'link'" :size="16" />
                 <Folder v-else :size="16" />
               </span>
@@ -1718,11 +1719,7 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   position: fixed;
   inset: 0 auto 0 0;
   width: 250px;
-  background: linear-gradient(
-    165deg,
-    rgba(255, 255, 255, 0.58) 0%,
-    rgba(245, 248, 255, 0.4) 100%
-  );
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.58) 0%, rgba(245, 248, 255, 0.4) 100%);
   backdrop-filter: blur(18px) saturate(1.9);
   -webkit-backdrop-filter: blur(18px) saturate(1.9);
   border-right: 1px solid rgba(255, 255, 255, 0.72);
@@ -1777,7 +1774,9 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   place-items: center;
   box-shadow: 0 7px 18px rgba(79, 124, 255, 0.3);
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 .brand-mark:hover {
   transform: scale(1.05);
@@ -2032,7 +2031,9 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 .flyout-item:hover {
   background: rgba(124, 110, 255, 0.1);
@@ -2107,7 +2108,7 @@ html.dark .flyout-item:hover {
   color: #738096;
 }
 .search-box:focus-within {
-  background: #fff;
+  background-color: #fff;
   border-color: #7b9cff;
   box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.12);
 }
@@ -2128,14 +2129,15 @@ html.dark .flyout-item:hover {
 .search-switch select {
   font-size: 12px;
   color: #5a6478;
-  background: #fff;
+  min-height: 34px;
+  background-color: #fff;
   border: 1px solid #e2e6ed;
   border-radius: 8px;
-  padding: 5px 6px;
+  padding: 6px 34px 6px 10px;
   cursor: pointer;
 }
 html.dark .search-switch select {
-  background: #222933;
+  background-color: #222933;
   color: #cdd5e0;
   border-color: #343d49;
 }
@@ -2542,7 +2544,9 @@ html.dark .search-switch select {
 }
 .palette-enter-active .command-panel,
 .palette-leave-active .command-panel {
-  transition: transform 0.16s ease, opacity 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    opacity 0.16s ease;
 }
 .palette-enter-from,
 .palette-leave-to {
@@ -2868,7 +2872,7 @@ html.dark .command-empty {
   border: 1px solid #dce1e8;
   border-radius: 9px;
   padding: 10px 11px;
-  background: #fff;
+  background-color: #fff;
   color: inherit;
   font: inherit;
   outline: 0;
@@ -3114,11 +3118,7 @@ html.dark .app-shell {
     radial-gradient(760px 720px at 92% 110%, rgba(74, 132, 186, 0.34), transparent 56%);
 }
 html.dark .sidebar {
-  background: linear-gradient(
-    165deg,
-    rgba(38, 46, 60, 0.62) 0%,
-    rgba(28, 35, 45, 0.46) 100%
-  );
+  background: linear-gradient(165deg, rgba(38, 46, 60, 0.62) 0%, rgba(28, 35, 45, 0.46) 100%);
   backdrop-filter: blur(18px) saturate(1.4);
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
   border-color: rgba(172, 194, 230, 0.16);
@@ -3187,11 +3187,7 @@ html.dark .sidebar-footer button:hover {
   color: #c9d8ff;
 }
 html.dark .category-nav button.active {
-  background: linear-gradient(
-    120deg,
-    rgba(124, 110, 255, 0.26),
-    rgba(198, 96, 234, 0.2)
-  );
+  background: linear-gradient(120deg, rgba(124, 110, 255, 0.26), rgba(198, 96, 234, 0.2));
   border-color: rgba(145, 171, 246, 0.4);
   color: #d8e3ff;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);

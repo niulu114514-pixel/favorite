@@ -26,8 +26,7 @@ export function useRandomBackground() {
   /** 用户是否关闭了动画偏好（自动轮换时尊重系统设置） */
   function prefersReducedMotion() {
     return (
-      typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
     )
   }
 
@@ -39,9 +38,7 @@ export function useRandomBackground() {
   /** 依据来源构造成最终可加载的图片地址，并附带时间戳绕开缓存以取新图 */
   function buildSrc(cfg: BackgroundConfig, ts: number) {
     let url =
-      cfg.source === 'custom' && cfg.customUrl?.trim()
-        ? cfg.customUrl.trim()
-        : cfg.apiUrl.trim()
+      cfg.source === 'custom' && cfg.customUrl?.trim() ? cfg.customUrl.trim() : cfg.apiUrl.trim()
     if (cfg.source === 'loli' && validParam(cfg.id, /^\d{1,6}$/)) {
       url += (url.includes('?') ? '&' : '?') + 'id=' + cfg.id
     }

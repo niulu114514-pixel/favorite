@@ -121,25 +121,19 @@ export function useCloudNav() {
     links.value = local.links
     categories.value = local.categories
     try {
-      const [dataResponse, configResponse, authResponse] = await Promise.all([
-        fetchWithTimeout('/api/storage?getConfig=true&readOnly=true'),
-        fetchWithTimeout('/api/storage?getConfig=all', { headers: authHeaders() }),
-        fetchWithTimeout('/api/storage?checkAuth=true', { headers: authHeaders() }),
-      ])
-      if (dataResponse.ok) {
-        const cloud = await dataResponse.json()
-        if (cloud.links?.length || cloud.categories?.length) {
-          const normalized = normalize(cloud)
+      const response = await fetchWithTimeout('/api/storage?bootstrap=true', {
+        headers: authHeaders(),
+      })
+      if (response.ok) {
+        const bootstrap = await response.json()
+        if (bootstrap.links?.length || bootstrap.categories?.length) {
+          const normalized = normalize(bootstrap)
           links.value = normalized.links
           categories.value = normalized.categories
           saveLocal()
         }
-      }
-      const loaded = configResponse.ok ? await configResponse.json() : {}
-      applyConfig(loaded)
-      if (authResponse.ok) {
-        const authState = await authResponse.json()
-        if (authState.authenticated) {
+        applyConfig(bootstrap.config || {})
+        if (bootstrap.auth?.authenticated) {
           if (!token.value) token.value = 'session'
         } else {
           token.value = ''
@@ -304,8 +298,11 @@ export function useCloudNav() {
     token.value = 'session'
     localStorage.removeItem(AUTH_KEY)
     try {
-      const configResponse = await fetchWithTimeout('/api/storage?getConfig=all')
-      if (configResponse.ok) applyConfig(await configResponse.json())
+      const configResponse = await fetchWithTimeout('/api/storage?bootstrap=true')
+      if (configResponse.ok) {
+        const bootstrap = await configResponse.json()
+        applyConfig(bootstrap.config || {})
+      }
     } catch {
       // Authentication remains valid even if private config refresh fails.
     }
@@ -354,7 +351,7 @@ export function useCloudNav() {
     }
   }
 
- async function removeLink(id: string) {
+  async function removeLink(id: string) {
     links.value = links.value.filter(item => item.id !== id)
     await persist()
   }
@@ -415,9 +412,7 @@ export function useCloudNav() {
         }
       }
     }
-    await Promise.all(
-      Array.from({ length: Math.min(CONCURRENCY, pending.length) }, () => worker())
-    )
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, pending.length) }, () => worker()))
 
     // 全部解析完成后一次性批量写入，减少响应式触发与本地缓存序列化次数。
     let changed = false
@@ -441,9 +436,14 @@ export function useCloudNav() {
   }
 
   async function saveCategory(category: Partial<Category>) {
+    const hasChildren = Boolean(
+      category.id && categories.value.some(item => item.parentId === category.id)
+    )
     const parentId =
       category.parentId &&
       category.parentId !== category.id &&
+      category.id !== 'common' &&
+      !hasChildren &&
       categories.value.some(item => item.id === category.parentId && !item.parentId)
         ? category.parentId
         : undefined
@@ -495,10 +495,14 @@ export function useCloudNav() {
 
   async function removeCategory(id: string) {
     if (id === 'common') return
+    const removedIds = new Set([
+      id,
+      ...categories.value.filter(item => item.parentId === id).map(item => item.id),
+    ])
     links.value = links.value.map(link =>
-      link.categoryId === id ? { ...link, categoryId: 'common' } : link
+      removedIds.has(link.categoryId) ? { ...link, categoryId: 'common' } : link
     )
-    categories.value = categories.value.filter(item => item.id !== id)
+    categories.value = categories.value.filter(item => !removedIds.has(item.id))
     await persist()
   }
 

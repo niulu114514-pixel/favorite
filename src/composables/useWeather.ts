@@ -36,7 +36,11 @@ function fetchWeather(): Promise<WeatherData> {
   return inflight
 }
 
-export function useWeather(config: { weather: WeatherConfig }) {
+export interface WeatherConfigSource {
+  weather?: WeatherConfig
+}
+
+export function useWeather(config: WeatherConfigSource) {
   const data = ref<WeatherData>({ enabled: false })
   const loading = ref(false)
   let retryTimer: number | undefined
@@ -74,7 +78,7 @@ export function useWeather(config: { weather: WeatherConfig }) {
 
   // 配置变化（含启用/源切换）时重新拉取
   watch(
-    () => config.weather,
+    () => [config.weather?.enabled, config.weather?.provider, config.weather?.unit],
     () => load(),
     { immediate: true }
   )

@@ -4,37 +4,37 @@
 
 ## 特性
 
-* Vue 3 + TypeScript + Vite，使用 Composition API 与组件化架构管理状态
+- Vue 3 + TypeScript + Vite，使用 Composition API 与组件化架构管理状态
 
-* 8分类侧栏与锚点导航，支持分类排序与分类内网站卡片拖拽排序
+- 一级/二级分类目录与锚点导航，支持分类排序与分类内网站卡片拖拽排序
 
-* 响应式卡片布局：网站卡片与分类卡片按设备尺寸自适应放大
+- 响应式卡片布局：网站卡片与分类卡片按设备尺寸自适应放大
 
-* 站内搜索，也可一键跳转 Google 互联网搜索
+- 站内搜索，也可一键跳转 Google 互联网搜索
 
-* 网站卡片支持置顶、添加、编辑、删除和排序
+- 网站卡片支持置顶、添加、编辑、删除和排序
 
-* 新增网站时自动获取 favicon，支持 EdgeOne Blob 缓存、Google、FaviconExtractor、自定义 URL/API
+- 新增网站时自动获取 favicon，支持 EdgeOne Blob 缓存、Google、FaviconExtractor、自定义 URL/API
 
-* 管理登录与权限控制，登录会话使用 HttpOnly Cookie
+- 管理登录与权限控制，登录会话使用 HttpOnly Cookie
 
-* localStorage 快速缓存，登录后自动同步 EdgeOne KV
+- localStorage 快速缓存，登录后自动同步 EdgeOne KV
 
-* 明暗主题、紧凑/详细视图、书签小程序参数预填
+- 明暗主题、紧凑/详细视图、书签小程序参数预填
 
-* 重构后的设置面板，完整适配移动端（抽屉式导航、分组表单、主题令牌）
+- 重构后的设置面板，完整适配移动端（抽屉式导航、分组表单、主题令牌）
 
-* AI 辅助生成网站描述与分类建议，支持 Gemini、OpenAI 兼容 API、Claude
+- AI 辅助生成网站描述与分类建议，支持 Gemini、OpenAI 兼容 API、Claude；API Key 仅由服务端代理使用
 
-* 保留 EdgeOne Pages Functions：认证、KV 存储、favicon 和上传接口，并提供升级后的 MCP Server
+- 保留 EdgeOne Pages Functions：认证、KV 存储、favicon 和上传接口，并提供升级后的 MCP Server
 
 ## 技术栈
 
-* 前端：Vue 3、TypeScript、Vite、Tailwind CSS 4
+- 前端：Vue 3、TypeScript、Vite、现代原生 CSS
 
-* 图标：lucide-vue-next
+- 图标：lucide-vue-next
 
-* 后端：EdgeOne Pages Functions、EdgeOne KV、Pages Blob
+- 后端：EdgeOne Pages Functions、EdgeOne KV、Pages Blob
 
 ## 本地开发
 
@@ -58,20 +58,20 @@ pnpm preview     # 本地预览生产构建
 
 构建设置使用：
 
-* 框架预设：Vite
+- 框架预设：Vite
 
-* 安装命令：`pnpm install`
+- 安装命令：`pnpm install`
 
-* 构建命令：`pnpm build`
+- 构建命令：`pnpm build`
 
-* 输出目录：`dist`
+- 输出目录：`dist`
 
 环境变量与绑定（本次安全修复没有新增变量）：
 
-| 名称 | 必填 | 说明 |
-|------|------|------|
-| `CLOUDNAV_KV` | 是 | EdgeOne KV 命名空间绑定，存储书签、分类、配置和登录 Token |
-| `PASSWORD` | 是 | 管理员密码 |
+| 名称             | 必填 | 说明                                                                                                                   |
+| ---------------- | ---- | ---------------------------------------------------------------------------------------------------------------------- |
+| `CLOUDNAV_KV`    | 是   | EdgeOne KV 命名空间绑定，存储书签、分类、配置和登录 Token                                                              |
+| `PASSWORD`       | 是   | 管理员密码                                                                                                             |
 | `ALLOWED_ORIGIN` | 建议 | CORS 允许来源。生产环境应设为站点完整 Origin，例如 `https://example.com`。未设置时默认为 `*`，跨域 Cookie 登录不会生效 |
 
 登录成功后服务端下发 `cloudnav_auth` HttpOnly Cookie。写操作同时接受该 Cookie、`Authorization: Bearer` 或 `x-auth-password`。
@@ -104,11 +104,11 @@ vite.config.ts          Vite 配置
 
 ## 分类与排序
 
-* 侧栏中拖动分类（或使用上下按钮）即可调整分类顺序，顺序会同步到云端。
+- 侧栏中拖动分类（或使用上下按钮）即可调整分类顺序，顺序会同步到云端。
 
-* 登录后，网站卡片右上角提供拖动把手和上下箭头，可调整该分类下卡片的排列顺序。
+- 登录后，网站卡片右上角提供拖动把手和上下箭头，可调整该分类下卡片的排列顺序。
 
-* 排序结果持久化到 KV，多设备登录后自动保持一致。
+- 排序结果持久化到 KV，多设备登录后自动保持一致。
 
 ## 远程 MCP Server
 
@@ -120,17 +120,19 @@ https://YOUR_DOMAIN/api/mcp
 
 端点支持 MCP Streamable HTTP/SDK，并实现以下工具：
 
-* 读取（公开）：`list_links`、`search_links`、`list_categories`
+- 读取（公开）：`list_links`、`search_links`、`list_categories`
 
-* 配置读取：`get_config` 公开时会脱敏；`ai` / `webdav` 等密钥字段仅认证后返回
+- 配置读取：`get_config` 始终脱敏，不向 MCP 客户端返回密码、Token、API Key 或自定义请求头
 
-* 链接写入（需认证）：`add_link`、`update_link`、`delete_link`、`reorder_links`
+- 链接写入（需认证）：`add_link`、`update_link`、`delete_link`、`reorder_links`
 
-* 分类写入（需认证）：`add_category`、`update_category`、`delete_category`、`reorder_categories`
+- 分类写入（需认证）：`add_category`、`update_category`、`delete_category`、`reorder_categories`
 
-* 配置写入（需认证）：`update_config`
+- 配置写入（需认证）：`update_config`
 
 并暴露两个结构化资源：`cloudnav://categories` 与 `cloudnav://links`，可由客户端通过 `resources/list` 与 `resources/read` 读取。
+
+登录管理后台后，可在“设置 → MCP 客户端”生成独立的 90 天 MCP 令牌。生成新令牌会使旧令牌失效，也可以随时手动撤销；令牌只在生成时显示一次。
 
 写操作以及带密钥的配置读取需要 `Authorization: Bearer <密码>`、`x-auth-password` 或已登录的 `cloudnav_auth` Cookie。登录后的「设置 → MCP / EdgeOne 部署」面板提供了可直接复制的客户端配置（Claude Desktop、Cursor、Cherry Studio）。
 
@@ -140,15 +142,15 @@ https://YOUR_DOMAIN/api/mcp
 
 ## 安全说明
 
-* 公开配置响应会脱敏 API Key、密码、Token、凭据和自定义 headers。
+- 公开配置响应会脱敏 API Key、密码、Token、凭据和自定义 headers。
 
-* KV 写入仅允许白名单 key（`config`、`cate_config` 以及 `config:*` / `links:*` 等业务键），禁止覆盖 `auth_token:*`。
+- KV 写入仅允许白名单 key（`config`、`cate_config` 以及 `config:*` / `links:*` 等业务键），禁止覆盖 `auth_token:*`。
 
-* WebDAV 与图标导入需要认证，仅接受公网 HTTPS，并限制超时和体积。
+- WebDAV 与图标导入需要认证，仅接受公网 HTTPS，并限制超时和体积。
 
-* 登录按边缘客户端 IP 限流；密码使用恒定时间比较。
+- 登录按边缘客户端 IP 限流；密码使用恒定时间比较。
 
-* Favicon 的 `domain` / `key` 会做格式校验；上传拒绝 SVG。
+- Favicon 的 `domain` / `key` 会做格式校验；上传拒绝 SVG。
 
 ## WebDAV backup API
 

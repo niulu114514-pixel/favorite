@@ -5,6 +5,7 @@ import {
   getCorsHeaders,
   getKV,
   jsonResponse,
+  mergeSecretConfig,
   parsePublicHttpsUrl,
   verifyRequestAuth,
 } from './_kvAdapter.js'
@@ -28,13 +29,19 @@ function buildDirUrl(baseUrl, folder) {
     .trim()
     .replace(/^\/+|\/+$/g, '')
     .split('/')
-    .filter(segment => segment && segment !== '.' && segment !== '..' && /^[a-zA-Z0-9._-]+$/.test(segment))
+    .filter(
+      segment => segment && segment !== '.' && segment !== '..' && /^[a-zA-Z0-9._-]+$/.test(segment)
+    )
     .join('/')
   return f ? baseUrl + f + '/' : baseUrl
 }
 
 function sanitizeFilename(name) {
-  const base = String(name || '').split('/').filter(Boolean).pop() || ''
+  const base =
+    String(name || '')
+      .split('/')
+      .filter(Boolean)
+      .pop() || ''
   return /^[a-zA-Z0-9._-]+$/.test(base) ? base : ''
 }
 
@@ -83,7 +90,15 @@ export async function onRequest(context) {
     if (!authenticated) return jsonResponse({ error: 'Unauthorized' }, 401, corsHeaders)
 
     const body = await request.json()
-    const { operation, config, payload } = body
+    const { operation, payload } = body
+    const storedRaw = await kv.get('config:webdav')
+    const legacyRaw = storedRaw ? null : await kv.get('config')
+    const stored = storedRaw
+      ? JSON.parse(storedRaw)
+      : legacyRaw
+        ? JSON.parse(legacyRaw).webdav || {}
+        : {}
+    const config = mergeSecretConfig(stored, body.config || {})
 
     if (!config || !config.url || !config.username || !config.password) {
       return jsonResponse({ error: 'Missing configuration' }, 400, corsHeaders)

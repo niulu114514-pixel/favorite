@@ -6,6 +6,7 @@ import {
   getCorsHeaders,
   getKV,
   jsonResponse,
+  mergeSecretConfig,
   normalizeDomain,
   sanitizePublicConfig,
   verifyRequestAuth,
@@ -76,6 +77,12 @@ async function mergeAllConfigSections(kv) {
   return configStr ? JSON.parse(configStr) : {}
 }
 
+async function writeConfigSection(kv, section, value) {
+  const previous = await readConfigSection(kv, section)
+  const next = mergeSecretConfig(previous, value)
+  await kv.put(`config:${section}`, JSON.stringify(next))
+}
+
 function categoryLinksKey(categoryId) {
   return `links:${categoryId}`
 }
@@ -83,11 +90,9 @@ function categoryLinksKey(categoryId) {
 async function readAllCategoryLinks(kv) {
   const categoriesStr = await kv.get(STORAGE_KEYS.CATEGORIES_CONFIG_KEY)
   const categories = categoriesStr ? JSON.parse(categoriesStr) : []
-
-  if (categories.length === 0) return []
-
-  const linkPromises = categories.map(async cat => {
-    const data = await kv.get(categoryLinksKey(cat.id))
+  const ids = [...new Set(['common', ...categories.map(category => category.id)])]
+  const linkPromises = ids.map(async id => {
+    const data = await kv.get(categoryLinksKey(id))
     return data ? JSON.parse(data) : []
   })
 
@@ -148,6 +153,29 @@ export async function onRequest(context) {
       const getConfig = url.searchParams.get('getConfig')
       const key = url.searchParams.get('key')
       const category = url.searchParams.get('category')
+
+      if (url.searchParams.get('bootstrap') === 'true') {
+        const [categoriesData, links, merged, authenticated] = await Promise.all([
+          kv.get(STORAGE_KEYS.CATEGORIES_CONFIG_KEY),
+          readAllCategoryLinks(kv),
+          mergeAllConfigSections(kv),
+          verifyRequestAuth(request, env, kv),
+        ])
+        const categories = categoriesData ? JSON.parse(categoriesData) : []
+        return jsonResponse(
+          {
+            links,
+            categories: categories.map(({ password, ...rest }) => rest),
+            config: sanitizePublicConfig(merged),
+            auth: {
+              authenticated,
+              hasPassword: Boolean(env.PASSWORD),
+            },
+          },
+          200,
+          { ...corsHeaders, 'Cache-Control': 'no-store' }
+        )
+      }
 
       if (checkAuth === 'true') {
         const authenticated = await verifyRequestAuth(request, env, kv)
@@ -271,7 +299,7 @@ export async function onRequest(context) {
       }
 
       if (CONFIG_SECTIONS.includes(body.saveConfig)) {
-        await kv.put(`config:${body.saveConfig}`, JSON.stringify(body.config))
+        await writeConfigSection(kv, body.saveConfig, body.config)
         return jsonResponse({ success: true }, 200, corsHeaders)
       }
 
@@ -282,9 +310,7 @@ export async function onRequest(context) {
         if (!entries.length) {
           return jsonResponse({ error: 'Invalid configuration sections' }, 400, corsHeaders)
         }
-        await Promise.all(
-          entries.map(([section, value]) => kv.put(`config:${section}`, JSON.stringify(value)))
-        )
+        await Promise.all(entries.map(([section, value]) => writeConfigSection(kv, section, value)))
         return jsonResponse({ success: true }, 200, corsHeaders)
       }
 

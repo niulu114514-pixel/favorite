@@ -5,6 +5,10 @@ export const MAX_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60
 
 const SECRET_KEY_PATTERN = /api[-_]?key|password|token|secret|authorization|credential|private/i
 
+export function isSecretConfigKey(key) {
+  return SECRET_KEY_PATTERN.test(String(key)) || String(key).toLowerCase() === 'headers'
+}
+
 /**
  * 获取 EdgeOne Pages KV 实例
  * @param {object} [env] - 函数 context.env
@@ -40,6 +44,22 @@ export function getCorsHeaders(env) {
     headers['Vary'] = 'Origin'
   }
   return headers
+}
+
+/**
+ * MCP Streamable HTTP requires Origin validation to mitigate DNS rebinding.
+ * Non-browser clients normally omit Origin and remain supported.
+ */
+export function isAllowedRequestOrigin(request, env) {
+  const origin = request.headers.get('origin')
+  if (!origin) return true
+  try {
+    if (origin === new URL(request.url).origin) return true
+  } catch {
+    return false
+  }
+  const allowed = env?.ALLOWED_ORIGIN
+  return Boolean(allowed && allowed !== '*' && origin === allowed)
 }
 
 export function timingSafeEqual(a, b) {
@@ -107,13 +127,7 @@ export function buildAuthCookie(token, maxAgeSeconds, secure) {
 }
 
 export function clearAuthCookie(secure) {
-  const parts = [
-    `${AUTH_COOKIE_NAME}=`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Strict',
-    'Max-Age=0',
-  ]
+  const parts = [`${AUTH_COOKIE_NAME}=`, 'Path=/', 'HttpOnly', 'SameSite=Strict', 'Max-Age=0']
   if (secure) parts.push('Secure')
   return parts.join('; ')
 }
@@ -132,9 +146,7 @@ function isPrivateIPv4(host) {
   if (/^\d+$/.test(host)) {
     const n = Number(host)
     if (n >= 0 && n <= 4294967295) {
-      return isPrivateIPv4(
-        `${(n >>> 24) & 255}.${(n >>> 16) & 255}.${(n >>> 8) & 255}.${n & 255}`
-      )
+      return isPrivateIPv4(`${(n >>> 24) & 255}.${(n >>> 16) & 255}.${(n >>> 8) & 255}.${n & 255}`)
     }
   }
   const parts = host.split('.')
@@ -200,9 +212,7 @@ export function normalizeDomain(value) {
   }
   hostname = hostname.replace(/\.$/, '').replace(/^\[|\]$/g, '')
   if (
-    !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/.test(
-      hostname
-    )
+    !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/.test(hostname)
   ) {
     return null
   }
@@ -226,6 +236,34 @@ export function sanitizePublicConfig(value) {
       .filter(([key]) => !SECRET_KEY_PATTERN.test(key) && key !== 'headers')
       .map(([key, entry]) => [key, sanitizePublicConfig(entry)])
   )
+}
+
+/** Preserve stored secrets when the browser submits a redacted/blank draft. */
+export function mergeSecretConfig(previous, incoming) {
+  if (Array.isArray(incoming) || !incoming || typeof incoming !== 'object') return incoming
+  const before =
+    previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {}
+  const merged = { ...incoming }
+  for (const [key, oldValue] of Object.entries(before)) {
+    const hasNewValue = Object.prototype.hasOwnProperty.call(incoming, key)
+    const nextValue = incoming[key]
+    if (isSecretConfigKey(key)) {
+      if (!hasNewValue || nextValue === '' || nextValue == null) merged[key] = oldValue
+      continue
+    }
+    if (
+      hasNewValue &&
+      oldValue &&
+      typeof oldValue === 'object' &&
+      !Array.isArray(oldValue) &&
+      nextValue &&
+      typeof nextValue === 'object' &&
+      !Array.isArray(nextValue)
+    ) {
+      merged[key] = mergeSecretConfig(oldValue, nextValue)
+    }
+  }
+  return merged
 }
 
 export function isHttpUrl(value) {
@@ -266,6 +304,20 @@ export async function verifyRequestAuth(request, env, kv) {
   for (const providedPassword of getRequestCredentials(request)) {
     if (await verifyAuth({ providedPassword, serverPassword: env?.PASSWORD, kv })) {
       return true
+    }
+  }
+  return false
+}
+
+/** MCP accepts the admin session/password plus independently revocable MCP tokens. */
+export async function verifyMcpRequestAuth(request, env, kv) {
+  if (await verifyRequestAuth(request, env, kv)) return true
+  for (const credential of getRequestCredentials(request)) {
+    if (!isHexToken(credential)) continue
+    try {
+      if ((await kv.get(`mcp_token:${credential}`)) === 'valid') return true
+    } catch {
+      // Try the next credential.
     }
   }
   return false

@@ -6,6 +6,7 @@ import {
   getKV,
   jsonResponse,
   normalizeDomain,
+  parsePublicHttpsUrl,
   sanitizeBlobKey,
 } from './_kvAdapter.js'
 
@@ -24,10 +25,16 @@ const PAGE_TIMEOUT_MS = 6000
 const MAX_PAGE_BYTES = 512 * 1024
 
 async function fetchUpstreamIcon(url) {
+  let safeUrl
+  try {
+    safeUrl = parsePublicHttpsUrl(url).toString()
+  } catch {
+    return null
+  }
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS)
   try {
-    const res = await fetch(url, {
+    const res = await fetch(safeUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
       redirect: 'manual',
       signal: controller.signal,
@@ -62,7 +69,7 @@ async function scrapeSiteIcon(domain) {
   try {
     const res = await fetch(base, {
       headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html,*/*;q=0.5' },
-      redirect: 'follow',
+      redirect: 'manual',
       signal: controller.signal,
     })
     if (!res.ok) return null
@@ -79,7 +86,8 @@ async function scrapeSiteIcon(domain) {
       const tag = m[0]
       const hrefMatch = /href\s*=\s*["']([^"']+)["']/i.exec(tag)
       if (!hrefMatch) continue
-      const rel = (/(?:rel|data-icon)\s*=\s*["'][^"']*["']/i.exec(tag) || [''])[0]?.toLowerCase() || ''
+      const rel =
+        (/(?:rel|data-icon)\s*=\s*["'][^"']*["']/i.exec(tag) || [''])[0]?.toLowerCase() || ''
       const isApple = rel.includes('apple-touch-icon')
       const isSvg = rel.includes('icon') && tag.toLowerCase().includes('.svg')
       const isIcon = rel.includes('icon')
@@ -123,7 +131,13 @@ function detectMimeType(arrayBuffer) {
   ) {
     return 'image/gif'
   }
-  if (uint8.length >= 4 && uint8[0] === 0x00 && uint8[1] === 0x00 && uint8[2] === 0x01 && uint8[3] === 0x00) {
+  if (
+    uint8.length >= 4 &&
+    uint8[0] === 0x00 &&
+    uint8[1] === 0x00 &&
+    uint8[2] === 0x01 &&
+    uint8[3] === 0x00
+  ) {
     return 'image/x-icon'
   }
   if (
@@ -158,7 +172,8 @@ function iconHeaders(mime, corsHeaders, cacheControl) {
     'Content-Type': mime,
     'Cache-Control': cacheControl,
     'X-Content-Type-Options': 'nosniff',
-    'Content-Security-Policy': "default-src 'none'; img-src 'self'; style-src 'none'; script-src 'none'",
+    'Content-Security-Policy':
+      "default-src 'none'; img-src 'self'; style-src 'none'; script-src 'none'",
     'Content-Disposition': mime === 'application/octet-stream' ? 'attachment' : 'inline',
     ...corsHeaders,
   }
@@ -174,7 +189,11 @@ export async function onRequest(context) {
     try {
       const refererHost = new URL(referer).hostname
       const requestHost = url.hostname
-      if (refererHost !== requestHost && refererHost !== 'localhost' && refererHost !== '127.0.0.1') {
+      if (
+        refererHost !== requestHost &&
+        refererHost !== 'localhost' &&
+        refererHost !== '127.0.0.1'
+      ) {
         return new Response('Forbidden', { status: 403 })
       }
     } catch {
@@ -197,40 +216,18 @@ export async function onRequest(context) {
     return jsonResponse({ error: 'key or domain parameter required' }, 400, corsHeaders)
   }
 
-  let cacheEnabled = true
-  try {
-    const kv = getKV(env)
-    let iconConfig = null
-    const iconStr = await kv.get('config:icon')
-    if (iconStr) {
-      iconConfig = JSON.parse(iconStr)
-    } else {
-      const configVal = await kv.get('config')
-      if (configVal) {
-        const config = JSON.parse(configVal)
-        iconConfig = config?.icon || null
-      }
-    }
-    if (iconConfig && typeof iconConfig.cacheEnabled === 'boolean') {
-      cacheEnabled = iconConfig.cacheEnabled
-    }
-  } catch (err) {
-    console.warn('Failed to read config from KV:', err)
-  }
-
   const storageKey = key || `favicon:${domain}`
+  let store = null
 
   try {
-    let getStore
     try {
       const blobSdk = await import('@edgeone/pages-blob')
-      getStore = blobSdk.getStore
+      store = blobSdk.getStore('favicons')
     } catch (e) {
       console.warn('Failed to import @edgeone/pages-blob for read:', e)
     }
 
-    if (getStore) {
-      const store = getStore('favicons')
+    if (store) {
       const cached = await store.get(storageKey, { type: 'arrayBuffer' })
       if (cached) {
         const mime = detectMimeType(cached)
@@ -268,18 +265,25 @@ export async function onRequest(context) {
   }
 
   if (buffer) {
+    let cacheEnabled = true
+    try {
+      const kv = getKV(env)
+      const iconStr = await kv.get('config:icon')
+      const legacyStr = iconStr ? null : await kv.get('config')
+      const iconConfig = iconStr
+        ? JSON.parse(iconStr)
+        : legacyStr
+          ? JSON.parse(legacyStr)?.icon
+          : null
+      if (iconConfig && typeof iconConfig.cacheEnabled === 'boolean') {
+        cacheEnabled = iconConfig.cacheEnabled
+      }
+    } catch (err) {
+      console.warn('Failed to read icon config from KV:', err)
+    }
     if (cacheEnabled) {
       try {
-        let getStore
-        try {
-          const blobSdk = await import('@edgeone/pages-blob')
-          getStore = blobSdk.getStore
-        } catch (e) {
-          console.warn('Failed to import @edgeone/pages-blob for write:', e)
-        }
-
-        if (getStore) {
-          const store = getStore('favicons')
+        if (store) {
           await store.set(storageKey, buffer, {
             cacheControl: 'public, max-age=31536000',
           })

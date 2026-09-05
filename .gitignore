@@ -580,3 +580,8 @@ kv/
 .pnpm-store/
 
 .idea/
+
+# Local uploads and one-off diagnostics
+.uploads/
+cf_shot.png
+.edgeone-bin/

@@ -81,9 +81,7 @@ async function fetchMemos(cfg) {
   if (!res.ok) return { error: `Memos 拉取失败：${res.status}` }
   const data = await res.json()
   const list = Array.isArray(data) ? data : []
-  const items = list
-    .map(m => stripHtml(m.content ?? m.contentHtml ?? ''))
-    .filter(Boolean)
+  const items = list.map(m => stripHtml(m.content ?? m.contentHtml ?? '')).filter(Boolean)
   if (!items.length) return { error: '暂无动态' }
   return { enabled: true, items }
 }
@@ -101,9 +99,7 @@ async function fetchYiyan() {
       if (!data || typeof data.hitokoto !== 'string' || !data.hitokoto) return null
       const author = typeof data.from_who === 'string' && data.from_who ? data.from_who : ''
       const source = typeof data.from === 'string' && data.from ? data.from : ''
-      return author || source
-        ? `${data.hitokoto} —— ${author || source}`
-        : data.hitokoto
+      return author || source ? `${data.hitokoto} —— ${author || source}` : data.hitokoto
     } catch {
       return null
     }

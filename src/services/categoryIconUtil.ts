@@ -7,9 +7,7 @@
 const EMOJI_RE = /^(\p{Extended_Pictographic})/u
 
 /** 从分类名中提取前导 emoji 作为图标，返回拆分后的 “ 图标 + 名称 ”。 */
-export function splitCategoryIcon(
-  rawName: string
-): { icon?: string; name: string } {
+export function splitCategoryIcon(rawName: string): { icon?: string; name: string } {
   const trimmed = rawName.trim()
   const match = EMOJI_RE.exec(trimmed)
   if (match) {

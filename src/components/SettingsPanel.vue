@@ -90,7 +90,7 @@ import type {
 } from '../../types'
 import { DEFAULT_BACKGROUND_CONFIG } from '../../types'
 import { DEFAULT_ICON_CONFIG } from '../services/iconService'
-import { generateLinkDescription } from '../services/aiService'
+import { testAIConfig } from '../services/aiService'
 import { isEmojiIcon, splitCategoryIcon } from '../services/categoryIconUtil'
 
 type SettingsDraft = {
@@ -124,7 +124,7 @@ const draft = reactive<SettingsDraft>(createDraft(props.config))
 
 const tickerCustomText = computed<string>({
   get: () => (draft.ticker.customItems || []).join('\n'),
-  set: (value) => {
+  set: value => {
     draft.ticker.customItems = value
       .split('\n')
       .map(line => line.trim())
@@ -138,6 +138,9 @@ const webdavMessage = ref('')
 const webdavBusy = ref(false)
 const saveError = ref('')
 const copied = ref(false)
+const mcpToken = ref('')
+const mcpTokenBusy = ref(false)
+const mcpTokenMessage = ref('')
 const settingsContent = ref<HTMLElement>()
 const activeSection = ref('appearance')
 const settingsTabs = [
@@ -166,7 +169,7 @@ const mcpClientConfig = computed(() =>
       mcpServers: {
         cloudnav: {
           url: mcpEndpoint,
-          headers: { Authorization: 'Bearer YOUR_ADMIN_TOKEN' },
+          headers: { Authorization: `Bearer ${mcpToken.value || 'YOUR_MCP_TOKEN'}` },
         },
       },
     },
@@ -224,6 +227,8 @@ watch(
     webdavBackupsLoaded.value = false
     categoryModalOpen.value = false
     bgPreviewUrl.value = ''
+    mcpToken.value = ''
+    mcpTokenMessage.value = ''
   }
 )
 
@@ -246,11 +251,14 @@ watch(
 
 function buildBgPreviewUrl() {
   let url =
-    draft.background.source !== 'custom' ||
-    !draft.background.customUrl?.trim()
+    draft.background.source !== 'custom' || !draft.background.customUrl?.trim()
       ? draft.background.apiUrl.trim()
       : draft.background.customUrl.trim()
-  if (draft.background.source === 'loli' && draft.background.id && /^\d{1,6}$/.test(draft.background.id)) {
+  if (
+    draft.background.source === 'loli' &&
+    draft.background.id &&
+    /^\d{1,6}$/.test(draft.background.id)
+  ) {
     url += url.includes('?') ? '&' : '?'
     url += 'id=' + draft.background.id
   }
@@ -391,7 +399,10 @@ async function save() {
     if (Object.keys(configs).length) {
       await props.saveConfigBatch(configs)
     }
-    emit('saved', { ...draft, ai: { ...draft.ai, websiteTitle: draft.websiteTitle, navigationName: draft.navigationName } })
+    emit('saved', {
+      ...draft,
+      ai: { ...draft.ai, websiteTitle: draft.websiteTitle, navigationName: draft.navigationName },
+    })
     emit('close')
   } catch (error) {
     saveError.value = error instanceof Error ? error.message : '保存失败'
@@ -427,9 +438,7 @@ async function testWebDav() {
 const backups = ref<WebDavBackupItem[]>([])
 const webdavBackupsLoaded = ref(false)
 
-const webdavConfigured = computed(
-  () => !!draft.webdav.url && !!draft.webdav.username && !!draft.webdav.password
-)
+const webdavConfigured = computed(() => !!draft.webdav.url && !!draft.webdav.username)
 
 function runWebDav<T>(operation: string, payload?: unknown): Promise<T> {
   return fetch('/api/webdav', {
@@ -671,7 +680,9 @@ async function submitCategoryForm() {
 }
 
 function confirmRemoveCategory(category: Category) {
-  if (!window.confirm(`删除“${category.name}”？该分类下的网站将移到常用推荐，二级分类也会一并删除。`))
+  if (
+    !window.confirm(`删除“${category.name}”？该分类下的网站将移到常用推荐，二级分类也会一并删除。`)
+  )
     return
   void props.removeCategory(category.id)
 }
@@ -714,7 +725,7 @@ async function testAI() {
   aiMessage.value = ''
   try {
     aiMessage.value =
-      (await generateLinkDescription('GitHub', 'https://github.com', draft.ai)) || 'AI 没有返回内容'
+      (await testAIConfig('GitHub', 'https://github.com', draft.ai)) || 'AI 没有返回内容'
   } catch (error) {
     aiMessage.value = error instanceof Error ? error.message : 'AI 测试失败'
   } finally {
@@ -728,6 +739,46 @@ async function copyMcp(value: string) {
   window.setTimeout(() => (copied.value = false), 1600)
 }
 
+async function generateMcpToken() {
+  mcpTokenBusy.value = true
+  mcpTokenMessage.value = ''
+  try {
+    const response = await fetch('/api/mcp-token', {
+      method: 'POST',
+      credentials: 'include',
+      headers:
+        props.token && props.token !== 'session' ? { 'x-auth-password': props.token } : undefined,
+    })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok || !result.token) throw new Error(result.error || `HTTP ${response.status}`)
+    mcpToken.value = result.token
+    mcpTokenMessage.value = '新令牌已生成，旧 MCP 令牌已自动失效。请立即复制并妥善保存。'
+  } catch (error) {
+    mcpTokenMessage.value = error instanceof Error ? error.message : '生成令牌失败'
+  } finally {
+    mcpTokenBusy.value = false
+  }
+}
+
+async function revokeMcpToken() {
+  mcpTokenBusy.value = true
+  try {
+    const response = await fetch('/api/mcp-token', {
+      method: 'DELETE',
+      credentials: 'include',
+      headers:
+        props.token && props.token !== 'session' ? { 'x-auth-password': props.token } : undefined,
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    mcpToken.value = ''
+    mcpTokenMessage.value = 'MCP 令牌已撤销。'
+  } catch (error) {
+    mcpTokenMessage.value = error instanceof Error ? error.message : '撤销令牌失败'
+  } finally {
+    mcpTokenBusy.value = false
+  }
+}
+
 function scrollToSection(id: string) {
   activeSection.value = id
   settingsContent.value?.scrollTo({ top: 0 })
@@ -739,7 +790,6 @@ function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
-
 </script>
 
 <template>
@@ -750,7 +800,7 @@ function formatSize(bytes: number) {
           <h2><Settings :size="19" /> 设置</h2>
           <p>配置网站、图标、AI 和 EdgeOne MCP。</p>
         </div>
-        <button class="settings-close" @click="emit('close')"><X /></button>
+        <button class="settings-close" aria-label="关闭设置" @click="emit('close')"><X /></button>
       </header>
       <div class="settings-body">
         <aside class="settings-nav" aria-label="设置分类">
@@ -815,7 +865,9 @@ function formatSize(bytes: number) {
                 </select></label
               >
               <label v-if="draft.background.source === 'loli'"
-                >LoliApi 地址<input v-model="draft.background.apiUrl" placeholder="https://www.loliapi.com/acg/"
+                >LoliApi 地址<input
+                  v-model="draft.background.apiUrl"
+                  placeholder="https://www.loliapi.com/acg/"
               /></label>
               <label v-else-if="draft.background.source === 'jinghuashang'"
                 >API 地址<input
@@ -830,7 +882,9 @@ function formatSize(bytes: number) {
             </div>
             <div class="settings-grid">
               <label v-if="draft.background.source === 'loli'"
-                >指定图片 id（可选）<input v-model="draft.background.id" placeholder="留空则随机" /></label
+                >指定图片 id（可选）<input
+                  v-model="draft.background.id"
+                  placeholder="留空则随机" /></label
               ><label v-else-if="draft.background.source === 'jinghuashang'"
                 >图片集<select v-model="draft.background.sort">
                   <option value="random">random（全部图片）</option>
@@ -873,19 +927,16 @@ function formatSize(bytes: number) {
               <button class="settings-secondary" @click="previewBg">
                 <Image :size="15" />预览 / 换一张
               </button>
-              <span v-if="bgPreviewUrl" class="bg-preview-hint">预览仅本地查看，保存后站点生效。</span>
+              <span v-if="bgPreviewUrl" class="bg-preview-hint"
+                >预览仅本地查看，保存后站点生效。</span
+              >
             </div>
             <div v-if="bgPreviewUrl" class="bg-preview" :style="{ backgroundColor: '#0e1520' }">
               <img
                 :src="bgPreviewUrl"
                 alt="随机背景预览"
                 loading="lazy"
-                style="
-                  width: 100%;
-                  height: 100%;
-                  object-fit: cover;
-                  object-position: center;
-                "
+                style="width: 100%; height: 100%; object-fit: cover; object-position: center"
               />
             </div>
             <button
@@ -894,22 +945,36 @@ function formatSize(bytes: number) {
               type="button"
               @click="bgDocsOpen = !bgDocsOpen"
             >
-              <BookOpen :size="15" />{{ bgDocsOpen ? '收起' : '查看' }} Jinghuashang 随机图 API 食用说明
+              <BookOpen :size="15" />{{ bgDocsOpen ? '收起' : '查看' }} Jinghuashang 随机图 API
+              食用说明
             </button>
             <div v-if="bgDocsOpen" class="bg-docs">
-              <div class="bg-docs-line"><strong>随机图 API 地址</strong><code>https://imgapi.jinghuashang.cn/random</code></div>
+              <div class="bg-docs-line">
+                <strong>随机图 API 地址</strong><code>https://imgapi.jinghuashang.cn/random</code>
+              </div>
               <div class="bg-docs-line"><strong>调用方法</strong><code>GET</code></div>
               <p class="bg-docs-p">
                 接口返回的是一张会实时重定向的随机二次元图片，本站已将其接入为网页背景；保存并启用后，
-                访问者每次进入或按“自动轮换”间隔都会自动换一张。不支持直接取回一张图片用于其它用途。</p>
+                访问者每次进入或按“自动轮换”间隔都会自动换一张。不支持直接取回一张图片用于其它用途。
+              </p>
               <div class="bg-docs-line"><strong>常用参数（直接拼在地址后）</strong></div>
               <ul class="bg-docs-list">
-                <li><code>sort</code> — 图片集：<code>random</code>（全部）/ <code>hp</code>（横屏）/ <code>sp</code>（竖屏）/ <code>huaming</code>（花铭老师，暂关闭）。不传默认随机全部。</li>
-                <li><code>type</code> — 输出方式：<code>text</code>（输出图片 URL）/ <code>json</code>（输出 JSON）。不传默认重定向。</li>
+                <li>
+                  <code>sort</code> — 图片集：<code>random</code>（全部）/ <code>hp</code>（横屏）/
+                  <code>sp</code>（竖屏）/
+                  <code>huaming</code>（花铭老师，暂关闭）。不传默认随机全部。
+                </li>
+                <li>
+                  <code>type</code> — 输出方式：<code>text</code>（输出图片 URL）/
+                  <code>json</code>（输出 JSON）。不传默认重定向。
+                </li>
                 <li><code>num</code> — 一次返回图片数量（≤100 正整数，非 1 时强制 JSON）。</li>
                 <li><code>only_check</code> — 传入任意真值即检查剩余额度，其它参数失效。</li>
               </ul>
-              <div class="bg-docs-line"><strong>轮播背景（备选接入方式）</strong><code>https://imgapi.jinghuashang.cn/player?time=10</code></div>
+              <div class="bg-docs-line">
+                <strong>轮播背景（备选接入方式）</strong
+                ><code>https://imgapi.jinghuashang.cn/player?time=10</code>
+              </div>
               <div class="bg-docs-line"><strong>注意事项</strong></div>
               <ul class="bg-docs-list">
                 <li>图片来自互联网，版权不确定，侵删。</li>
@@ -936,7 +1001,10 @@ function formatSize(bytes: number) {
 
             <div v-if="topRows.length" class="category-sort-list">
               <template v-for="(parent, pIndex) in topRows" :key="parent.id">
-                <div class="category-sort-row" :class="{ 'has-children': childrenOf(parent.id).length }">
+                <div
+                  class="category-sort-row"
+                  :class="{ 'has-children': childrenOf(parent.id).length }"
+                >
                   <template v-if="isEmojiIcon(parent.icon)">
                     <span class="emoji-icon">{{ parent.icon }}</span>
                   </template>
@@ -1061,29 +1129,28 @@ function formatSize(bytes: number) {
           >
             <h3><Globe2 :size="17" /> 搜索引擎</h3>
             <p class="settings-help">
-              在顶栏搜索框可切换到外部搜索。下方维护外部搜索引擎列表；每个源的 URL
-              支持用 <code>{query}</code> 占位符表示关键词（例如
+              在顶栏搜索框可切换到外部搜索。下方维护外部搜索引擎列表；每个源的 URL 支持用
+              <code>{query}</code> 占位符表示关键词（例如
               <code>https://www.google.com/search?q={query}</code>）。未含占位符时，关键词会作为
               <code>?q=</code> 参数追加。
             </p>
-            <div
-              class="search-source-list"
-              v-if="draft.search.externalSources.length"
-            >
+            <div class="search-source-list" v-if="draft.search.externalSources.length">
               <div
                 v-for="(source, index) in draft.search.externalSources"
                 :key="source.id"
                 class="search-source-row"
               >
                 <label class="settings-check search-source-enable"
-                  ><input v-model="source.enabled" type="checkbox" /></label
-                >
+                  ><input v-model="source.enabled" type="checkbox"
+                /></label>
                 <label class="search-source-field"
-                  >名称<input v-model="source.name" placeholder="Google" /></label
-                >
+                  >名称<input v-model="source.name" placeholder="Google"
+                /></label>
                 <label class="search-source-field search-source-url"
-                  >URL 模板<input v-model="source.url" placeholder="https://www.google.com/search?q={query}" /></label
-                >
+                  >URL 模板<input
+                    v-model="source.url"
+                    placeholder="https://www.google.com/search?q={query}"
+                /></label>
                 <button
                   type="button"
                   class="icon-button"
@@ -1160,9 +1227,7 @@ function formatSize(bytes: number) {
                   placeholder="OpenWeather 的 API Key"
               /></label>
               <label
-                >城市<input
-                  v-model="draft.weather.openweatherCity"
-                  placeholder="例如 Shanghai"
+                >城市<input v-model="draft.weather.openweatherCity" placeholder="例如 Shanghai"
               /></label>
             </template>
             <template v-else>
@@ -1271,8 +1336,8 @@ function formatSize(bytes: number) {
                   v-model="tickerCustomText"
                   rows="5"
                   placeholder="每条信息占一行"
-                ></textarea></label
-              >
+                ></textarea>
+              </label>
             </template>
           </section>
 
@@ -1283,8 +1348,8 @@ function formatSize(bytes: number) {
           >
             <h3><Sparkles :size="17" /> AI 功能</h3>
             <p class="settings-help">
-              在添加网站时自动生成中文描述，也可根据分类列表给出分类建议。API Key 仅保存在你的 KV
-              配置中。
+              在添加网站时自动生成中文描述，也可根据分类列表给出分类建议。请求由服务端代理，API Key
+              不会发送给第三方前端脚本；留空会保留已保存的密钥。
             </p>
             <div class="settings-grid">
               <label
@@ -1297,7 +1362,11 @@ function formatSize(bytes: number) {
               <label>模型<input v-model="draft.ai.model" placeholder="gemini-2.0-flash" /></label>
             </div>
             <label
-              >API Key<input v-model="draft.ai.apiKey" type="password" autocomplete="off"
+              >API Key<input
+                v-model="draft.ai.apiKey"
+                type="password"
+                autocomplete="off"
+                placeholder="留空保留服务端已保存的密钥"
             /></label>
             <label
               >Base URL<input v-model="draft.ai.baseUrl" placeholder="https://api.openai.com/v1"
@@ -1343,6 +1412,7 @@ function formatSize(bytes: number) {
                   v-model="draft.webdav.password"
                   type="password"
                   autocomplete="new-password"
+                  placeholder="留空保留服务端已保存的密码"
               /></label>
             </div>
 
@@ -1372,15 +1442,17 @@ function formatSize(bytes: number) {
             <span
               v-if="webdavMessage"
               class="settings-result"
-              :class="{ error: !webdavMessage.includes('成功') && !webdavMessage.includes('暂没有') }"
+              :class="{
+                error: !webdavMessage.includes('成功') && !webdavMessage.includes('暂没有'),
+              }"
               >{{ webdavMessage }}</span
             >
 
             <div v-if="webdavBackupsLoaded" class="backup-list">
-              <div class="backup-list-title">
-                已备份的文件（{{ backups.length }}）
+              <div class="backup-list-title">已备份的文件（{{ backups.length }}）</div>
+              <div v-if="!backups.length" class="backup-list-empty">
+                还没有备份，点击“立即备份”创建。
               </div>
-              <div v-if="!backups.length" class="backup-list-empty">还没有备份，点击“立即备份”创建。</div>
               <div v-for="item in backups" :key="item.name" class="backup-row">
                 <div class="backup-meta">
                   <span class="backup-name">{{ item.name }}</span>
@@ -1412,12 +1484,25 @@ function formatSize(bytes: number) {
             <p class="settings-help mcp-server-help">
               只读工具（list_links、search_links、list_categories、get_stats、get_link、
               get_category、list_recent_links）无需认证即可访问；写入工具需要携带管理令牌
-              （Authorization Bearer），get_config 仅在认证后才返回含密钥的配置。
+              （Authorization Bearer）。下方可生成与网页登录会话分离、可随时撤销的 MCP 令牌。
             </p>
             <p class="settings-help mcp-server-help">
-              分类图标约定：add_category / update_category 的名称（name）带前导 emoji 时（如
-              “⭐ 常用推荐”）会被自动提取为图标，否则使用 lucide 图标名（如 Folder、Star）。
+              分类图标约定：add_category / update_category 的名称（name）带前导 emoji 时（如 “⭐
+              常用推荐”）会被自动提取为图标，否则使用 lucide 图标名（如 Folder、Star）。
             </p>
+            <div class="settings-inline">
+              <button class="settings-primary" :disabled="mcpTokenBusy" @click="generateMcpToken">
+                <KeyRound :size="15" />{{ mcpTokenBusy ? '处理中…' : '生成独立 MCP 令牌' }}
+              </button>
+              <button class="settings-secondary" :disabled="mcpTokenBusy" @click="revokeMcpToken">
+                撤销现有令牌
+              </button>
+            </div>
+            <p v-if="mcpTokenMessage" class="settings-result">{{ mcpTokenMessage }}</p>
+            <div v-if="mcpToken" class="mcp-command mcp-token-value">
+              <code>{{ mcpToken }}</code>
+              <button @click="copyMcp(mcpToken)" title="复制 MCP 令牌"><Copy :size="15" /></button>
+            </div>
             <div class="mcp-command">
               <code>{{ mcpEndpoint }}</code
               ><button @click="copyMcp(mcpEndpoint)" :title="copied ? '已复制' : '复制 MCP 地址'">
@@ -1496,7 +1581,9 @@ function formatSize(bytes: number) {
         </label>
         <p class="modal-help">默认新建为一级分类；选择上级分类后即为二级，支持两级分类。</p>
         <div class="category-field-label">图标</div>
-        <p class="modal-help">名称前输入 emoji（如“⭐ 常用推荐”）会自动作为图标；也可在下方选择。</p>
+        <p class="modal-help">
+          名称前输入 emoji（如“⭐ 常用推荐”）会自动作为图标；也可在下方选择。
+        </p>
         <div class="category-icon-picker">
           <button
             v-for="option in categoryIconOptions"
@@ -1524,9 +1611,7 @@ function formatSize(bytes: number) {
           </button>
         </div>
         <div class="category-form-actions">
-          <button type="button" class="settings-secondary" @click="closeCategoryForm">
-            取消
-          </button>
+          <button type="button" class="settings-secondary" @click="closeCategoryForm">取消</button>
           <button type="submit" class="settings-primary" :disabled="savingCategory">
             <Save :size="15" />{{ savingCategory ? '保存中…' : '保存' }}
           </button>
@@ -1745,7 +1830,7 @@ html.dark .settings-backdrop {
   padding: 9px 11px;
   border: 1px solid var(--c-border-strong);
   border-radius: 10px;
-  background: var(--c-input-bg);
+  background-color: var(--c-input-bg);
   color: var(--c-text);
   font: inherit;
   font-weight: 400;
@@ -2117,7 +2202,7 @@ html.dark .settings-secondary {
   padding: 9px 11px;
   border: 1px solid var(--c-border-strong);
   border-radius: 9px;
-  background: var(--c-input-bg);
+  background-color: var(--c-input-bg);
   color: var(--c-text);
   font-size: 14px;
   outline: none;

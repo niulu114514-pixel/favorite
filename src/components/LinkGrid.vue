@@ -30,7 +30,10 @@ function move(id: string, delta: number) {
   const next = [...props.links]
   const [moved] = next.splice(from, 1)
   next.splice(to, 0, moved)
-  emit('reorder', next.map(link => link.id))
+  emit(
+    'reorder',
+    next.map(link => link.id)
+  )
 }
 
 function gripStart(id: string) {
@@ -217,6 +220,7 @@ function dropOn(overIdValue: string) {
   gap: 1px;
 }
 .link-card-wrap:hover .card-actions,
+.link-card-wrap:focus-within .card-actions,
 .link-card-wrap.dragging .card-actions {
   display: flex;
   flex-wrap: wrap;
