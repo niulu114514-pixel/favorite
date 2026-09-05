@@ -97,6 +97,7 @@ import { favicon, handleFaviconError } from './composables/useFavicon'
 import { isEmojiIcon } from './services/categoryIconUtil'
 import { safeTargetUrl } from './utils/url'
 import { generateLinkDescription, suggestCategory } from './services/aiService'
+import { fetchSiteMetadata } from './services/siteMetadataService'
 
 const SettingsPanel = defineAsyncComponent(() => import('./components/SettingsPanel.vue'))
 
@@ -107,9 +108,14 @@ const { items: tickerItems } = useTicker(nav.config)
 const searchQuery = ref('')
 // '' 表示站内搜索，否则为所选中外部搜索引擎的 id
 const searchMode = ref('')
+const searchModeMenuOpen = ref(false)
+const searchModePicker = ref<HTMLElement | null>(null)
 const externalSearch = computed(() => searchMode.value !== '')
 const externalSources = computed(() =>
   (nav.config.search?.externalSources || []).filter(source => source.enabled && source.url)
+)
+const activeSearchSource = computed(
+  () => externalSources.value.find(source => source.id === searchMode.value) || null
 )
 
 // ===== 命令面板（Ctrl+K）=====
@@ -289,6 +295,13 @@ const showPassword = ref(false)
 const loggingIn = ref(false)
 const aiBusy = ref(false)
 const aiError = ref('')
+const metadataBusy = ref(false)
+const metadataStatus = ref('')
+let metadataTimer: number | undefined
+let metadataController: AbortController | undefined
+let lastEnrichedUrl = ''
+let lastAutoTitle = ''
+let lastAutoDescription = ''
 const searchInput = ref<HTMLInputElement>()
 const activeCategoryId = ref('')
 const LONG_PRESS_MS = 450
@@ -621,12 +634,25 @@ function submitSearch() {
   const query = searchQuery.value.trim()
   if (!query || !externalSearch.value) return
   const source = externalSources.value.find(s => s.id === searchMode.value)
+  if (!source) return
   let url = source?.url || ''
   const encoded = encodeURIComponent(query)
   if (url.includes('{query}')) url = url.replace(/\{query\}/g, encoded)
   else if (url.includes('%s')) url = url.replace(/%s/g, encoded)
   else url = url.replace(/[?&]$/, '') + (url.includes('?') ? '&' : '?') + 'q=' + encoded
   window.open(url, '_blank', 'noopener')
+  searchQuery.value = ''
+}
+
+function selectSearchMode(mode: string) {
+  searchMode.value = mode
+  searchModeMenuOpen.value = false
+  void nextTick(() => searchInput.value?.focus())
+}
+
+function closeSearchModeMenuOnOutsideClick(event: PointerEvent) {
+  if (!searchModeMenuOpen.value) return
+  if (!searchModePicker.value?.contains(event.target as Node)) searchModeMenuOpen.value = false
 }
 
 function jumpTo(id: string) {
@@ -761,6 +787,11 @@ function reorderCategoryLevel(draggedId: string, targetId: string) {
 
 function openLinkModal(link?: LinkItem) {
   editingLink.value = link ? { ...link } : { categoryId: nav.categories.value[0]?.id || 'common' }
+  lastEnrichedUrl = link?.url || ''
+  lastAutoTitle = ''
+  lastAutoDescription = ''
+  metadataStatus.value = ''
+  aiError.value = ''
   prepareCategoryPicker(editingLink.value.categoryId)
   iconError.value = ''
   linkModalOpen.value = true
@@ -768,9 +799,106 @@ function openLinkModal(link?: LinkItem) {
 
 function openLinkModalForCategory(categoryId: string) {
   editingLink.value = { categoryId }
+  lastEnrichedUrl = ''
+  lastAutoTitle = ''
+  lastAutoDescription = ''
+  metadataStatus.value = ''
+  aiError.value = ''
   prepareCategoryPicker(categoryId)
   iconError.value = ''
   linkModalOpen.value = true
+}
+
+function normalizeWebsiteUrl(value?: string) {
+  const raw = value?.trim() || ''
+  if (!raw) return ''
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+    return /^https?:$/.test(parsed.protocol) && parsed.hostname.includes('.')
+      ? parsed.toString()
+      : ''
+  } catch {
+    return ''
+  }
+}
+
+async function enrichWebsite(force = false) {
+  const requestedUrl = normalizeWebsiteUrl(editingLink.value.url)
+  if (!requestedUrl || (!force && requestedUrl === lastEnrichedUrl)) return
+
+  metadataController?.abort()
+  metadataController = new AbortController()
+  const controller = metadataController
+  metadataBusy.value = true
+  metadataStatus.value = '正在识别网站名称与图标…'
+  aiError.value = ''
+
+  try {
+    const metadata = await fetchSiteMetadata(requestedUrl, controller.signal)
+    if (controller.signal.aborted || normalizeWebsiteUrl(editingLink.value.url) !== requestedUrl)
+      return
+
+    if (!editingLink.value.title?.trim() || editingLink.value.title === lastAutoTitle) {
+      editingLink.value.title = metadata.title
+      lastAutoTitle = metadata.title
+    }
+    if (!editingLink.value.icon || editingLink.value.icon.startsWith('/api/favicon?domain=')) {
+      editingLink.value.icon = metadata.icon
+    }
+    lastEnrichedUrl = requestedUrl
+    metadataStatus.value = '名称和图标已识别，正在生成 AI 描述…'
+
+    const title = editingLink.value.title?.trim()
+    if (!title) {
+      metadataStatus.value = '名称和图标已识别'
+      return
+    }
+
+    aiBusy.value = true
+    const tasks: Promise<unknown>[] = [generateLinkDescription(title, requestedUrl)]
+    const canSuggestCategory = !editingLink.value.id
+    if (canSuggestCategory) {
+      tasks.push(suggestCategory(title, requestedUrl, nav.categories.value))
+    }
+    const results = await Promise.allSettled(tasks)
+    if (controller.signal.aborted || normalizeWebsiteUrl(editingLink.value.url) !== requestedUrl)
+      return
+
+    const descriptionResult = results[0]
+    if (descriptionResult.status === 'fulfilled' && typeof descriptionResult.value === 'string') {
+      if (
+        !editingLink.value.description?.trim() ||
+        editingLink.value.description === lastAutoDescription
+      ) {
+        editingLink.value.description = descriptionResult.value
+        lastAutoDescription = descriptionResult.value
+      }
+    }
+    const categoryResult = results[1]
+    if (categoryResult?.status === 'fulfilled' && typeof categoryResult.value === 'string') {
+      editingLink.value.categoryId = categoryResult.value
+      prepareCategoryPicker(categoryResult.value)
+    }
+    if (descriptionResult.status === 'rejected') {
+      aiError.value =
+        descriptionResult.reason instanceof Error
+          ? `名称和图标已识别；${descriptionResult.reason.message}`
+          : '名称和图标已识别；AI 描述生成失败'
+      metadataStatus.value = ''
+    } else {
+      metadataStatus.value = '网站信息已自动补全，你仍可手动修改'
+    }
+  } catch (error) {
+    if (controller.signal.aborted) return
+    metadataStatus.value = ''
+    aiError.value = error instanceof Error ? error.message : '无法识别该网站，请手动填写'
+  } finally {
+    if (metadataController === controller) {
+      metadataController = undefined
+      metadataBusy.value = false
+      aiBusy.value = false
+    }
+  }
 }
 
 async function submitLink() {
@@ -785,8 +913,12 @@ async function submitLink() {
 }
 
 async function generateWithAI() {
-  if (!editingLink.value.title?.trim() || !editingLink.value.url?.trim()) {
-    aiError.value = '请先填写名称和网址'
+  if (!normalizeWebsiteUrl(editingLink.value.url)) {
+    aiError.value = '请先填写有效的网址'
+    return
+  }
+  if (!editingLink.value.title?.trim()) {
+    await enrichWebsite(true)
     return
   }
   aiBusy.value = true
@@ -804,6 +936,34 @@ async function generateWithAI() {
     aiBusy.value = false
   }
 }
+
+watch(
+  () => editingLink.value.url,
+  value => {
+    if (!linkModalOpen.value) return
+    if (metadataTimer) window.clearTimeout(metadataTimer)
+    metadataStatus.value = ''
+    const normalized = normalizeWebsiteUrl(value)
+    if (!normalized || normalized === lastEnrichedUrl) return
+    metadataTimer = window.setTimeout(() => void enrichWebsite(), 700)
+  }
+)
+
+watch(linkModalOpen, open => {
+  if (open) return
+  if (metadataTimer) window.clearTimeout(metadataTimer)
+  metadataTimer = undefined
+  metadataController?.abort()
+  metadataController = undefined
+  metadataBusy.value = false
+  aiBusy.value = false
+})
+
+watch(externalSources, sources => {
+  if (searchMode.value && !sources.some(source => source.id === searchMode.value)) {
+    searchMode.value = ''
+  }
+})
 
 async function deleteLink(link: LinkItem) {
   if (confirm(`确定删除“${link.title}”吗？`)) await nav.removeLink(link.id)
@@ -910,17 +1070,22 @@ onMounted(async () => {
   const addUrl = params.get('add_url')
   if (addUrl) {
     editingLink.value = { url: addUrl, title: params.get('add_title') || '', categoryId: 'common' }
+    lastEnrichedUrl = ''
     linkModalOpen.value = true
     history.replaceState({}, '', location.pathname)
   }
   window.addEventListener('keydown', handleGlobalKeydown)
   window.addEventListener('keydown', onCommandKeydown)
+  document.addEventListener('pointerdown', closeSearchModeMenuOnOutsideClick)
 })
 
 onBeforeUnmount(() => {
   setPageScrollLocked(false)
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('keydown', onCommandKeydown)
+  document.removeEventListener('pointerdown', closeSearchModeMenuOnOutsideClick)
+  if (metadataTimer) window.clearTimeout(metadataTimer)
+  metadataController?.abort()
   cancelCategoryDragSession()
   stopWeather()
   background.stopAll()
@@ -1119,14 +1284,72 @@ onBeforeUnmount(() => {
           <button v-if="searchQuery" type="button" class="clear-search" @click="searchQuery = ''">
             <X :size="16" />
           </button>
+          <button
+            v-if="externalSearch && searchQuery"
+            type="submit"
+            class="internet-search-submit"
+            :aria-label="`使用 ${activeSearchSource?.name || '互联网'} 搜索`"
+          >
+            <span>搜索</span><ArrowUpRight :size="14" />
+          </button>
         </form>
-        <div v-if="externalSources.length" class="search-switch">
-          <select v-model="searchMode" aria-label="搜索范围">
-            <option value="">站内</option>
-            <option v-for="source in externalSources" :key="source.id" :value="source.id">
-              {{ source.name || '外部搜索' }}
-            </option>
-          </select>
+        <div v-if="externalSources.length" ref="searchModePicker" class="search-mode-picker">
+          <button
+            type="button"
+            class="search-mode-trigger"
+            :class="{ external: externalSearch, open: searchModeMenuOpen }"
+            aria-haspopup="listbox"
+            aria-controls="search-mode-menu"
+            :aria-expanded="searchModeMenuOpen"
+            @click="searchModeMenuOpen = !searchModeMenuOpen"
+          >
+            <Globe2 v-if="externalSearch" :size="15" />
+            <Bookmark v-else :size="15" />
+            <span>{{ activeSearchSource?.name || '站内' }}</span>
+            <ChevronDown :size="15" />
+          </button>
+          <Transition name="search-menu">
+            <div
+              v-if="searchModeMenuOpen"
+              id="search-mode-menu"
+              class="search-mode-menu"
+              role="listbox"
+              aria-label="选择搜索范围"
+              @keydown.esc.stop="searchModeMenuOpen = false"
+            >
+              <div class="search-mode-menu-label">搜索范围</div>
+              <button
+                type="button"
+                class="search-mode-option"
+                :class="{ active: !searchMode }"
+                role="option"
+                :aria-selected="!searchMode"
+                @click="selectSearchMode('')"
+              >
+                <span class="search-mode-option-icon"><Bookmark :size="16" /></span>
+                <span><strong>站内收藏</strong><small>即时筛选已保存的网站</small></span>
+                <Check v-if="!searchMode" :size="16" />
+              </button>
+              <div class="search-mode-divider"><span>互联网搜索</span></div>
+              <button
+                v-for="source in externalSources"
+                :key="source.id"
+                type="button"
+                class="search-mode-option"
+                :class="{ active: searchMode === source.id }"
+                role="option"
+                :aria-selected="searchMode === source.id"
+                @click="selectSearchMode(source.id)"
+              >
+                <span class="search-mode-option-icon"><Globe2 :size="16" /></span>
+                <span
+                  ><strong>{{ source.name || '外部搜索' }}</strong
+                  ><small>在新标签页打开，搜索后自动清空</small></span
+                >
+                <Check v-if="searchMode === source.id" :size="16" />
+              </button>
+            </div>
+          </Transition>
         </div>
         <div class="header-actions">
           <button
@@ -1390,30 +1613,58 @@ onBeforeUnmount(() => {
             <X />
           </button>
         </div>
-        <label
-          >名称<input
-            v-model="editingLink.title"
-            required
-            maxlength="100"
-            placeholder="例如 GitHub"
-        /></label>
-        <label
-          >网址<input
+        <label class="website-url-field"
+          ><span class="field-label-row"
+            ><span>网址</span><span class="auto-field-badge">第一步 · 自动识别</span></span
+          ><input
             v-model="editingLink.url"
             required
             maxlength="2048"
             placeholder="https://example.com"
         /></label>
+        <div
+          class="website-enrich-status"
+          :class="{ busy: metadataBusy || aiBusy }"
+          aria-live="polite"
+        >
+          <span class="website-enrich-icon">
+            <Sparkles v-if="!metadataBusy && !aiBusy" :size="16" />
+            <span v-else class="mini-spinner" aria-hidden="true"></span>
+          </span>
+          <span>
+            <strong>{{ metadataBusy || aiBusy ? '正在自动补全' : '自动识别网站信息' }}</strong>
+            <small>{{
+              metadataStatus || '输入网址后，将获取名称和图标，并调用 AI 生成描述。'
+            }}</small>
+          </span>
+          <button
+            type="button"
+            :disabled="metadataBusy || aiBusy || !editingLink.url"
+            @click="enrichWebsite(true)"
+          >
+            重新识别
+          </button>
+        </div>
         <label
-          >描述<textarea
+          >名称<input
+            v-model="editingLink.title"
+            required
+            maxlength="100"
+            placeholder="将根据网址自动填写，也可手动修改"
+        /></label>
+        <label
+          ><span class="field-label-row"
+            ><span>描述</span
+            ><span class="ai-field-badge"><Sparkles :size="12" /> AI 自动生成</span></span
+          ><textarea
             v-model="editingLink.description"
             rows="3"
-            placeholder="一句话介绍这个网站"
+            placeholder="输入网址后自动生成，也可手动修改"
           />
         </label>
         <div class="ai-link-actions">
           <button type="button" class="secondary-button" :disabled="aiBusy" @click="generateWithAI">
-            <Sparkles :size="15" />{{ aiBusy ? 'AI 处理中…' : 'AI 生成描述并分类' }}
+            <Sparkles :size="15" />{{ aiBusy ? 'AI 处理中…' : '重新生成 AI 描述并分类' }}
           </button>
           <span v-if="aiError" class="form-error">{{ aiError }}</span>
         </div>
@@ -1428,7 +1679,7 @@ onBeforeUnmount(() => {
               @error="e => ((e.target as HTMLImageElement).src = '')"
             />
             <div v-else class="icon-preview icon-preview-empty"><Image :size="22" /></div>
-            <p class="icon-picker-hint">自动获取该网址自身的 favicon，输入网址即可实时预览。</p>
+            <p class="icon-picker-hint">优先读取网站官方图标，并通过 EdgeOne 缓存加速。</p>
           </div>
           <input
             v-model="editingLink.icon"
@@ -1436,7 +1687,7 @@ onBeforeUnmount(() => {
             placeholder="留空自动获取网站 favicon；也可粘贴自定义图标 URL 覆盖"
           />
           <span v-if="iconError" class="form-error">{{ iconError }}</span>
-          <p class="form-hint">自动从网站获取 favicon，并支持多来源智能回退，无需手动上传。</p>
+          <p class="form-hint">一般无需填写；仅在需要覆盖自动结果时粘贴自定义图标 URL。</p>
         </div>
         <div class="category-picker">
           <span class="field-label">保存到分类</span>
@@ -1593,7 +1844,9 @@ onBeforeUnmount(() => {
         </button>
         <div class="modal-actions">
           <button type="button" class="secondary-button" @click="linkModalOpen = false">取消</button
-          ><button class="primary-button"><Check :size="17" />保存</button>
+          ><button class="primary-button" :disabled="metadataBusy || aiBusy">
+            <Check :size="17" />保存
+          </button>
         </div>
       </form>
     </div>
@@ -2333,20 +2586,201 @@ html.dark .flyout-item:hover {
   color: inherit;
   cursor: pointer;
 }
-.search-switch select {
-  font-size: 12px;
-  color: #5a6478;
-  min-height: 34px;
-  background-color: #fff;
-  border: 1px solid #e2e6ed;
+.internet-search-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 0;
   border-radius: 8px;
-  padding: 6px 34px 6px 10px;
+  background: #466de0;
+  color: #fff;
   cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
 }
-html.dark .search-switch select {
-  background-color: #222933;
-  color: #cdd5e0;
+.internet-search-submit:hover {
+  background: #315ed5;
+}
+.search-mode-picker {
+  position: relative;
+  flex: 0 0 auto;
+}
+.search-mode-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  max-width: 170px;
+  padding: 0 11px;
+  border: 1px solid #e1e6ee;
+  border-radius: 11px;
+  background: #fff;
+  color: #59667a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    color 0.16s ease;
+}
+.search-mode-trigger span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-mode-trigger > svg:last-child {
+  transition: transform 0.16s ease;
+}
+.search-mode-trigger.open > svg:last-child {
+  transform: rotate(180deg);
+}
+.search-mode-trigger:hover,
+.search-mode-trigger.open {
+  border-color: #9cafe9;
+  background: #f7f9ff;
+  color: #315ed5;
+}
+.search-mode-trigger.external {
+  border-color: rgba(70, 109, 224, 0.28);
+  background: rgba(70, 109, 224, 0.08);
+  color: #315ed5;
+}
+.search-mode-menu {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  z-index: 60;
+  width: min(310px, calc(100vw - 24px));
+  padding: 9px;
+  border: 1px solid #e2e7ef;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 48px rgba(25, 38, 67, 0.18);
+  backdrop-filter: blur(16px);
+}
+.search-mode-menu-label {
+  padding: 4px 8px 8px;
+  color: #8b96a8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.search-mode-option {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 54px;
+  padding: 8px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: #46536a;
+  cursor: pointer;
+  text-align: left;
+}
+.search-mode-option:hover {
+  background: #f3f6fb;
+}
+.search-mode-option.active {
+  background: #eef3ff;
+  color: #315ed5;
+}
+.search-mode-option-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #f0f3f8;
+  color: #65738a;
+}
+.search-mode-option.active .search-mode-option-icon {
+  background: #fff;
+  color: #315ed5;
+  box-shadow: 0 3px 12px rgba(49, 94, 213, 0.12);
+}
+.search-mode-option strong,
+.search-mode-option small {
+  display: block;
+}
+.search-mode-option strong {
+  margin-bottom: 3px;
+  font-size: 13px;
+}
+.search-mode-option small {
+  overflow: hidden;
+  color: #8a95a7;
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-mode-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 8px 3px;
+  color: #9ba5b4;
+  font-size: 10px;
+}
+.search-mode-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #edf0f4;
+}
+.search-menu-enter-active,
+.search-menu-leave-active {
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+.search-menu-enter-from,
+.search-menu-leave-to {
+  opacity: 0;
+  transform: translateY(-5px) scale(0.98);
+}
+html.dark .search-mode-trigger {
   border-color: #343d49;
+  background: #222933;
+  color: #cdd5e0;
+}
+html.dark .search-mode-trigger:hover,
+html.dark .search-mode-trigger.open,
+html.dark .search-mode-trigger.external {
+  border-color: #536cae;
+  background: #293554;
+  color: #cbd7ff;
+}
+html.dark .search-mode-menu {
+  border-color: #343d49;
+  background: rgba(31, 37, 47, 0.98);
+}
+html.dark .search-mode-option {
+  color: #d3dae5;
+}
+html.dark .search-mode-option:hover {
+  background: #29313d;
+}
+html.dark .search-mode-option.active {
+  background: #293554;
+  color: #cbd7ff;
+}
+html.dark .search-mode-option-icon {
+  background: #2b333f;
+}
+html.dark .search-mode-option.active .search-mode-option-icon {
+  background: #344264;
+}
+html.dark .search-mode-divider::after {
+  background: #343d49;
 }
 .header-actions {
   display: flex;
@@ -3391,6 +3825,107 @@ html.dark .command-empty {
   display: block;
   margin: 13px 0;
 }
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.auto-field-badge,
+.ai-field-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: #4568ce;
+  background: rgba(78, 119, 231, 0.1);
+  font-size: 10px;
+  font-weight: 650;
+}
+.website-enrich-status {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: -2px 0 15px;
+  padding: 10px 11px;
+  border: 1px solid #e4e8ef;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #536177;
+}
+.website-enrich-status.busy {
+  border-color: rgba(78, 119, 231, 0.3);
+  background: rgba(78, 119, 231, 0.06);
+}
+.website-enrich-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #fff;
+  color: #466de0;
+  box-shadow: 0 4px 14px rgba(31, 50, 90, 0.08);
+}
+.website-enrich-status strong,
+.website-enrich-status small {
+  display: block;
+}
+.website-enrich-status strong {
+  margin-bottom: 2px;
+  color: #46536a;
+  font-size: 12px;
+}
+.website-enrich-status small {
+  color: #8994a6;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.website-enrich-status > button {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: #eef3ff;
+  color: #3f65d0;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+}
+.website-enrich-status > button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.mini-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(70, 109, 224, 0.22);
+  border-top-color: #466de0;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+html.dark .website-enrich-status {
+  border-color: #343d49;
+  background: #222933;
+}
+html.dark .website-enrich-status.busy {
+  border-color: #5067a6;
+  background: #293554;
+}
+html.dark .website-enrich-icon,
+html.dark .website-enrich-status > button {
+  background: #303a4b;
+}
+html.dark .website-enrich-status strong {
+  color: #d3dae5;
+}
 .modal-help {
   margin: -4px 0 0;
   color: #8490a3;
@@ -3970,8 +4505,19 @@ html.dark .secondary-button {
   .ticker-bar {
     margin: 8px 10px 0;
   }
-  .search-switch {
+  .search-mode-trigger {
+    width: 38px;
+    padding: 0;
+    justify-content: center;
+  }
+  .search-mode-trigger span,
+  .search-mode-trigger > svg:last-child {
     display: none;
+  }
+  .search-mode-menu {
+    position: fixed;
+    top: 68px;
+    right: 10px;
   }
   .primary-button span {
     display: none;

@@ -70,12 +70,7 @@ export interface AIConfig {
 }
 
 // 图标获取方式类型
-export type IconSourceType =
-  | 'faviconextractor'
-  | 'google'
-  | 'customapi'
-  | 'customurl'
-  | 'upload-edgeone'
+export type IconSourceType = 'faviconextractor' | 'google'
 
 // 图标配置
 export interface IconConfig {
@@ -87,15 +82,6 @@ export interface IconConfig {
   google?: {
     enabled: boolean
     apiKey?: string
-  }
-  customapi?: {
-    enabled: boolean
-    url: string
-    headers?: Record<string, string>
-  }
-  customurl?: {
-    enabled: boolean
-    url: string
   }
 }
 
@@ -276,7 +262,7 @@ export const INITIAL_LINKS: LinkItem[] = [
     id: 'init1',
     title: 'X',
     url: 'https://x.com/',
-    icon: '/favicons/x.svg',
+    icon: '/api/favicon?domain=x.com',
     description: 'Blaze your glory!',
     categoryId: 'common',
     createdAt: Date.now(),
@@ -285,7 +271,7 @@ export const INITIAL_LINKS: LinkItem[] = [
     id: 'init2',
     title: 'GitHub',
     url: 'https://github.com',
-    icon: '/favicons/github.svg',
+    icon: '/api/favicon?domain=github.com',
     description: 'Build and ship software on a single, collaborative platform',
     categoryId: 'common',
     createdAt: Date.now(),
@@ -294,7 +280,7 @@ export const INITIAL_LINKS: LinkItem[] = [
     id: 'init3',
     title: 'Cloudflare',
     url: 'https://dash.cloudflare.com/',
-    icon: '/favicons/cloudflare.svg',
+    icon: '/api/favicon?domain=dash.cloudflare.com',
     description: 'Connect, protect, and build everywhere',
     categoryId: 'common',
     createdAt: Date.now(),

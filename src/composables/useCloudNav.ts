@@ -166,12 +166,14 @@ export function useCloudNav() {
 
   function applyConfig(loaded: Record<string, unknown>) {
     const ai = (loaded.ai || {}) as Partial<AIConfig>
-    const icon = (loaded.icon || {}) as Partial<IconConfig>
+    const icon = (loaded.icon || {}) as Partial<IconConfig> & { source?: string }
     const webdav = (loaded.webdav || {}) as Partial<WebDavConfig>
     const view = (loaded.view || {}) as { defaultMode?: 'compact' | 'detailed' }
     const ui = (loaded.ui || {}) as { showPinnedWebsites?: boolean }
     Object.assign(config.ai, ai)
-    Object.assign(config.icon, icon)
+    Object.assign(config.icon, icon, {
+      source: icon.source === 'faviconextractor' ? 'faviconextractor' : 'google',
+    })
     Object.assign(config.webdav, webdav)
     Object.assign(config.background, {
       ...DEFAULT_BACKGROUND_CONFIG,
@@ -397,7 +399,7 @@ export function useCloudNav() {
     if (!pending.length) return
 
     // 有界并发：避免冷缓存期把所有 /api/favicon 一次性压上去，
-    // 同时明显快于严格串行（customapi 等真实网络源场景收益最大）。
+    // 同时明显快于严格串行，且不会阻塞当前页面的交互。
     const CONCURRENCY = 6
     const resolved: Array<{ link: LinkItem; icon?: string }> = []
     let cursor = 0

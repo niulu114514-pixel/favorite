@@ -850,12 +850,33 @@ function formatSize(bytes: number) {
               <label>导航名称<input v-model="draft.navigationName" placeholder="CloudNav" /></label>
             </div>
             <div class="settings-grid">
-              <label
-                >默认视图<select v-model="draft.defaultViewMode">
-                  <option value="detailed">详细</option>
-                  <option value="compact">紧凑</option>
-                </select></label
-              >
+              <div class="view-choice-field">
+                <span>默认视图</span>
+                <div class="view-choice-group" role="radiogroup" aria-label="默认视图">
+                  <button
+                    type="button"
+                    :class="{ active: draft.defaultViewMode === 'detailed' }"
+                    role="radio"
+                    :aria-checked="draft.defaultViewMode === 'detailed'"
+                    @click="draft.defaultViewMode = 'detailed'"
+                  >
+                    <LayoutList :size="16" /><span
+                      ><strong>详细</strong><small>显示网站描述</small></span
+                    >
+                  </button>
+                  <button
+                    type="button"
+                    :class="{ active: draft.defaultViewMode === 'compact' }"
+                    role="radio"
+                    :aria-checked="draft.defaultViewMode === 'compact'"
+                    @click="draft.defaultViewMode = 'compact'"
+                  >
+                    <Grid2X2 :size="16" /><span
+                      ><strong>紧凑</strong><small>展示更多网站</small></span
+                    >
+                  </button>
+                </div>
+              </div>
               <label class="settings-check"
                 ><input v-model="draft.showPinned" type="checkbox" />显示置顶区域</label
               >
@@ -1151,32 +1172,52 @@ function formatSize(bytes: number) {
             v-if="activeSection === 'icons'"
             class="settings-section settings-card"
           >
-            <h3><ExternalLink :size="17" /> 图标自动获取</h3>
+            <h3><ExternalLink :size="17" /> 网站图标</h3>
             <p class="settings-help">
-              新增网站时自动生成图标；启用边缘缓存后由 `/api/favicon` 抓取并缓存到 EdgeOne Pages
-              Blob。
+              默认使用 EdgeOne
+              自动获取并缓存网站图标。日常使用只需要保持推荐模式，无需理解或配置第三方来源。
             </p>
-            <label
-              >图标来源<select v-model="draft.icon.source">
-                <option value="google">EdgeOne 缓存（推荐）</option>
-                <option value="faviconextractor">FaviconExtractor</option>
-                <option value="customurl">自定义 URL 模板</option>
-                <option value="customapi">自定义 API</option>
-              </select></label
+            <button
+              type="button"
+              class="icon-mode-card recommended"
+              :class="{ active: draft.icon.source === 'google' }"
+              @click="draft.icon.source = 'google'"
             >
-            <label class="settings-check"
-              ><input v-model="draft.icon.cacheEnabled" type="checkbox" />启用边缘抓取缓存</label
-            >
-            <label v-if="draft.icon.source === 'customurl'"
-              >URL 模板<input
-                v-model="draft.icon.customurl!.url"
-                placeholder="https://example.com/icon?domain={domain}"
-            /></label>
-            <label v-if="draft.icon.source === 'customapi'"
-              >API 地址<input
-                v-model="draft.icon.customapi!.url"
-                placeholder="https://example.com/icon"
-            /></label>
+              <span class="icon-mode-symbol"><CloudUpload :size="21" /></span>
+              <span class="icon-mode-copy">
+                <span class="icon-mode-title"><strong>EdgeOne 智能获取</strong><em>推荐</em></span>
+                <small>自动查找网站官方图标，失败时切换备用来源，并缓存到 EdgeOne Blob。</small>
+              </span>
+              <Check v-if="draft.icon.source === 'google'" :size="18" />
+            </button>
+            <label class="icon-cache-toggle">
+              <span>
+                <strong>启用 EdgeOne 缓存</strong>
+                <small>访问过的图标会在边缘节点复用，加载更快、更稳定。</small>
+              </span>
+              <input v-model="draft.icon.cacheEnabled" type="checkbox" />
+            </label>
+            <details class="icon-advanced" :open="draft.icon.source !== 'google'">
+              <summary>
+                <span><Settings :size="15" /> 高级图标来源</span>
+                <small>仅在你有自己的图标服务时使用</small>
+              </summary>
+              <div class="icon-advanced-body">
+                <p>此模式会绕过 EdgeOne 图标接口。若不确定用途，请保持上方的推荐模式。</p>
+                <div class="icon-source-options" role="radiogroup" aria-label="高级图标来源">
+                  <button
+                    type="button"
+                    :class="{ active: draft.icon.source === 'faviconextractor' }"
+                    role="radio"
+                    :aria-checked="draft.icon.source === 'faviconextractor'"
+                    @click="draft.icon.source = 'faviconextractor'"
+                  >
+                    <strong>第三方直连</strong>
+                    <small>直接使用 FaviconExtractor 服务，不建议作为默认项。</small>
+                  </button>
+                </div>
+              </div>
+            </details>
           </section>
 
           <section
@@ -1923,6 +1964,52 @@ html.dark .settings-backdrop {
   grid-template-columns: 1fr 1fr;
   gap: 13px;
 }
+.view-choice-field {
+  margin: 11px 0;
+  color: var(--c-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+.view-choice-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 6px;
+}
+.view-choice-group button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 48px;
+  padding: 8px 9px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 10px;
+  background: var(--c-input-bg);
+  color: var(--c-text);
+  cursor: pointer;
+  text-align: left;
+}
+.view-choice-group button:hover,
+.view-choice-group button.active {
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+.view-choice-group strong,
+.view-choice-group small {
+  display: block;
+}
+.view-choice-group strong {
+  font-size: 11px;
+}
+.view-choice-group small {
+  margin-top: 2px;
+  color: var(--c-muted);
+  font-size: 9px;
+  font-weight: 400;
+  white-space: nowrap;
+}
 .settings-range {
   display: flex !important;
   align-items: center;
@@ -2014,6 +2101,160 @@ html.dark .settings-backdrop {
   width: 17px;
   height: 17px;
   accent-color: var(--c-primary);
+}
+.icon-mode-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 13px;
+  background: var(--c-bg-soft);
+  color: var(--c-text);
+  cursor: pointer;
+  text-align: left;
+}
+.icon-mode-card:hover,
+.icon-mode-card.active {
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+}
+.icon-mode-symbol {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--c-bg);
+  color: var(--c-primary);
+  box-shadow: var(--c-card-shadow);
+}
+.icon-mode-copy,
+.icon-mode-title,
+.icon-mode-card small {
+  display: block;
+}
+.icon-mode-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 4px;
+}
+.icon-mode-title strong {
+  font-size: 13px;
+}
+.icon-mode-title em {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--c-primary);
+  color: #fff;
+  font-size: 10px;
+  font-style: normal;
+}
+.icon-mode-card small,
+.icon-cache-toggle small,
+.icon-advanced summary small {
+  color: var(--c-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.icon-cache-toggle {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 10px 0 0 !important;
+  padding: 12px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  background: var(--c-bg);
+  cursor: pointer;
+}
+.icon-cache-toggle strong,
+.icon-cache-toggle small {
+  display: block;
+}
+.icon-cache-toggle strong {
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+.icon-cache-toggle input {
+  width: 34px;
+  height: 18px;
+  accent-color: var(--c-primary);
+  flex: 0 0 auto;
+}
+.icon-advanced {
+  margin-top: 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--c-bg-soft);
+}
+.icon-advanced summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.icon-advanced summary::-webkit-details-marker {
+  display: none;
+}
+.icon-advanced summary > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.icon-advanced-body {
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--c-border);
+}
+.icon-advanced-body > p {
+  margin: 12px 0;
+  color: var(--c-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.icon-source-options {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.icon-source-options button {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  background: var(--c-bg);
+  color: var(--c-text);
+  cursor: pointer;
+  text-align: left;
+}
+.icon-source-options button:hover,
+.icon-source-options button.active {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 2px var(--c-primary-soft);
+}
+.icon-source-options strong,
+.icon-source-options small {
+  display: block;
+}
+.icon-source-options strong {
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+.icon-source-options small {
+  color: var(--c-muted);
+  font-size: 10px;
+  line-height: 1.45;
 }
 .search-source-list {
   display: flex;
@@ -2804,6 +3045,14 @@ html.dark .settings-footer .settings-secondary:hover {
   }
   .add-search-source {
     min-height: 66px;
+  }
+  .icon-source-options {
+    grid-template-columns: 1fr;
+  }
+  .icon-advanced summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
   }
   .ticker-editor-head,
   .ticker-editor-foot {
