@@ -95,7 +95,7 @@ const background = useRandomBackground()
 const { data: weatherData, refresh: refreshWeather } = useWeather({
   weather: nav.config.weather,
 })
-const { items: tickerItems } = useTicker({ ticker: nav.config.ticker })
+const { items: tickerItems } = useTicker(nav.config)
 const searchQuery = ref('')
 // '' 表示站内搜索，否则为所选中外部搜索引擎的 id
 const searchMode = ref('')

@@ -11,6 +11,12 @@ export interface TickerData {
   error?: string
 }
 
+// 可观察的 ticker 配置来源：传入整个响应式配置对象，内部通过 computed
+// 实时读取最新的 .ticker 值，从而兼容“整体替换”与“原地修改”两种更新方式。
+export interface TickerConfigSource {
+  ticker?: TickerConfig
+}
+
 const REQUEST_TIMEOUT = 6000
 
 function fetchTicker(): Promise<TickerData> {
@@ -25,12 +31,14 @@ function fetchTicker(): Promise<TickerData> {
     .finally(() => window.clearTimeout(timer))
 }
 
-export function useTicker(config: { ticker: TickerConfig }) {
+export function useTicker(config: TickerConfigSource) {
   const remote = ref<TickerData>({ enabled: false })
   const loading = ref(false)
 
+  const ticker = computed<TickerConfig>(() => (config.ticker || { enabled: false }) as TickerConfig)
+
   const items = computed<string[]>(() => {
-    const cfg = config.ticker
+    const cfg = ticker.value
     if (!cfg || !cfg.enabled) return []
     if (cfg.source === 'custom') {
       return (cfg.customItems || []).filter(Boolean)
@@ -39,7 +47,7 @@ export function useTicker(config: { ticker: TickerConfig }) {
   })
 
   async function load() {
-    const cfg = config.ticker
+    const cfg = ticker.value
     if (!cfg || !cfg.enabled) {
       remote.value = { enabled: false }
       return
@@ -50,9 +58,9 @@ export function useTicker(config: { ticker: TickerConfig }) {
   }
 
   watch(
-    () => [config.ticker?.enabled, config.ticker?.source],
+    () => [ticker.value?.enabled, ticker.value?.source],
     () => {
-      if (config.ticker?.enabled && config.ticker.source !== 'custom') void load()
+      if (ticker.value?.enabled && ticker.value.source !== 'custom') void load()
       else remote.value = { enabled: false }
     },
     { immediate: true }
