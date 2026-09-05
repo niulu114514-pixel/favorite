@@ -964,8 +964,9 @@ onBeforeUnmount(() => {
               >
             </button>
             <div
-              v-if="sidebarCollapsed && categoryChildren(category.id).length"
+              v-if="sidebarCollapsed"
               class="flyout"
+              :class="{ 'flyout--bare': !categoryChildren(category.id).length }"
             >
               <div class="flyout-title">
                 <template v-if="isEmojiIcon(category.icon)">
@@ -978,21 +979,23 @@ onBeforeUnmount(() => {
                 />
                 <span class="flyout-name">{{ category.name }}</span>
               </div>
-              <button
-                v-for="child in categoryChildren(category.id)"
-                :key="child.id"
-                type="button"
-                class="flyout-item"
-                :data-sort-category="child.id"
-                @click="jumpTo(child.id)"
-              >
-                <template v-if="isEmojiIcon(child.icon)">
-                  <span class="emoji-icon">{{ child.icon }}</span>
-                </template>
-                <component v-else :is="getCategoryIcon(child.icon)" :size="14" />
-                <span>{{ child.name }}</span>
-                <span class="flyout-count">{{ categoryCount(child) }}</span>
-              </button>
+              <template v-if="categoryChildren(category.id).length">
+                <button
+                  v-for="child in categoryChildren(category.id)"
+                  :key="child.id"
+                  type="button"
+                  class="flyout-item"
+                  :data-sort-category="child.id"
+                  @click="jumpTo(child.id)"
+                >
+                  <template v-if="isEmojiIcon(child.icon)">
+                    <span class="emoji-icon">{{ child.icon }}</span>
+                  </template>
+                  <component v-else :is="getCategoryIcon(child.icon)" :size="14" />
+                  <span>{{ child.name }}</span>
+                  <span class="flyout-count">{{ categoryCount(child) }}</span>
+                </button>
+              </template>
             </div>
           </div>
           <transition-group name="subcat" tag="div" class="subcat-group">
@@ -2008,6 +2011,12 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
 .flyout-name {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* 无二级目录的分类：折叠态 hover 仅展示图标+名称，去掉空列表分隔线 */
+.flyout--bare .flyout-title {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 2px;
 }
 .flyout-item {
   display: flex;
