@@ -146,6 +146,7 @@ const mcpTokenBusy = ref(false)
 const mcpTokenMessage = ref('')
 const settingsContent = ref<HTMLElement>()
 const activeSection = ref('appearance')
+const mobileSettingsNavOpen = ref(false)
 const settingsTabs = [
   { id: 'appearance', label: '外观与视图', icon: Palette },
   { id: 'background', label: '随机背景', icon: Image },
@@ -158,6 +159,9 @@ const settingsTabs = [
   { id: 'mcp', label: 'MCP 客户端', icon: KeyRound },
   { id: 'webdav', label: 'WebDAV 备份', icon: Cloud },
 ]
+const activeSettingsTab = computed(
+  () => settingsTabs.find(tab => tab.id === activeSection.value) || settingsTabs[0]
+)
 const mcpEndpoint = `${window.location.origin}/api/mcp`
 const mcpTools = [
   'list_links · search_links · list_categories · get_stats · get_category',
@@ -230,6 +234,7 @@ watch(
     webdavBackupsLoaded.value = false
     categoryModalOpen.value = false
     expandedManagerCategoryIds.value = new Set()
+    mobileSettingsNavOpen.value = false
     bgPreviewUrl.value = ''
     mcpToken.value = ''
     mcpTokenMessage.value = ''
@@ -800,6 +805,7 @@ async function revokeMcpToken() {
 
 function scrollToSection(id: string) {
   activeSection.value = id
+  mobileSettingsNavOpen.value = false
   settingsContent.value?.scrollTo({ top: 0 })
 }
 
@@ -822,6 +828,33 @@ function formatSize(bytes: number) {
         <button class="settings-close" aria-label="关闭设置" @click="emit('close')"><X /></button>
       </header>
       <div class="settings-body">
+        <div class="mobile-settings-nav">
+          <button
+            type="button"
+            class="mobile-settings-nav-trigger"
+            aria-controls="mobile-settings-menu"
+            :aria-expanded="mobileSettingsNavOpen"
+            @click="mobileSettingsNavOpen = !mobileSettingsNavOpen"
+          >
+            <component :is="activeSettingsTab.icon" :size="17" />
+            <span>{{ activeSettingsTab.label }}</span>
+            <ChevronDown :size="18" :class="{ open: mobileSettingsNavOpen }" />
+          </button>
+          <div v-if="mobileSettingsNavOpen" id="mobile-settings-menu" class="mobile-settings-menu">
+            <button
+              v-for="tab in settingsTabs"
+              :key="tab.id"
+              type="button"
+              :class="{ active: activeSection === tab.id }"
+              :aria-current="activeSection === tab.id ? 'page' : undefined"
+              @click="scrollToSection(tab.id)"
+            >
+              <component :is="tab.icon" :size="16" />
+              <span>{{ tab.label }}</span>
+              <Check v-if="activeSection === tab.id" :size="15" />
+            </button>
+          </div>
+        </div>
         <aside class="settings-nav" aria-label="设置分类">
           <p class="settings-nav-label">配置中心</p>
           <button
@@ -1238,9 +1271,14 @@ function formatSize(bytes: number) {
                 :key="source.id"
                 class="search-source-row"
               >
-                <label class="settings-check search-source-enable"
-                  ><input v-model="source.enabled" type="checkbox"
-                /></label>
+                <label class="settings-check search-source-enable">
+                  <input
+                    v-model="source.enabled"
+                    type="checkbox"
+                    :aria-label="`${source.name || '搜索引擎'}启用状态`"
+                  />
+                  <span>{{ source.enabled ? '已启用' : '已停用' }}</span>
+                </label>
                 <label class="search-source-field"
                   >名称<input v-model="source.name" placeholder="Google"
                 /></label>
@@ -1781,6 +1819,7 @@ html.dark .settings-backdrop {
   display: grid;
   place-items: center;
   padding: 20px;
+  box-sizing: border-box;
   background: var(--c-overlay);
 }
 .settings-modal {
@@ -1843,6 +1882,9 @@ html.dark .settings-backdrop {
   grid-template-columns: 210px minmax(0, 1fr);
   min-height: 0;
   flex: 1;
+}
+.mobile-settings-nav {
+  display: none;
 }
 .settings-nav {
   display: flex;
@@ -2274,6 +2316,12 @@ html.dark .settings-backdrop {
 .search-source-row .search-source-enable {
   flex: 0 0 auto;
   margin: 0 !important;
+}
+.search-source-enable span {
+  color: var(--c-muted);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
 }
 .search-source-field {
   flex: 1;
@@ -2944,15 +2992,17 @@ html.dark .settings-footer .settings-secondary:hover {
   line-height: 1.5;
 }
 
-/* ===== Mobile: horizontal tab bar + stacked body ===== */
+/* ===== Mobile: compact section picker + stacked body ===== */
 @media (max-width: 680px) {
   .settings-backdrop {
-    padding: 8px;
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+      max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
     place-items: stretch;
   }
   .settings-modal {
     width: 100%;
-    max-height: calc(100dvh - 16px);
+    height: 100%;
+    max-height: 100%;
     border-radius: 18px;
   }
   .settings-header {
@@ -2962,8 +3012,8 @@ html.dark .settings-footer .settings-secondary:hover {
     font-size: 18px;
   }
   .settings-close {
-    width: 38px;
-    height: 38px;
+    width: 42px;
+    height: 42px;
   }
   .settings-body {
     display: flex;
@@ -2972,32 +3022,90 @@ html.dark .settings-footer .settings-secondary:hover {
     flex: 1;
   }
   .settings-nav {
-    display: flex;
-    flex: 0 0 auto;
-    flex-direction: row;
-    gap: 8px;
-    padding: 10px;
-    overflow-x: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--c-border);
-    scrollbar-width: none;
-  }
-  .settings-nav::-webkit-scrollbar {
     display: none;
   }
-  .settings-nav-label,
-  .settings-nav-tip {
-    display: none;
-  }
-  .settings-nav button {
+  .mobile-settings-nav {
+    position: relative;
+    z-index: 12;
+    display: block;
     flex: 0 0 auto;
-    width: auto;
-    min-width: 106px;
-    min-height: 44px;
-    justify-content: flex-start;
     padding: 10px 12px;
+    border-bottom: 1px solid var(--c-border);
+    background: var(--c-bg);
+  }
+  .mobile-settings-nav-trigger {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    min-height: 46px;
+    padding: 0 13px;
+    border: 1px solid var(--c-border-strong);
+    border-radius: 12px;
+    background: var(--c-surface);
+    color: var(--c-text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mobile-settings-nav-trigger > svg:first-child {
+    color: var(--c-primary);
+  }
+  .mobile-settings-nav-trigger > svg:last-child {
+    color: var(--c-muted);
+    transition: transform 0.16s ease;
+  }
+  .mobile-settings-nav-trigger > svg:last-child.open {
+    transform: rotate(180deg);
+  }
+  .mobile-settings-menu {
+    position: absolute;
+    top: calc(100% - 5px);
+    right: 12px;
+    left: 12px;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    max-height: min(420px, calc(100dvh - 170px));
+    padding: 9px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--c-border-strong);
+    border-radius: 14px;
+    background: var(--c-bg);
+    box-shadow: 0 18px 55px rgba(24, 38, 68, 0.24);
+  }
+  .mobile-settings-menu button {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    min-height: 46px;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: var(--c-surface);
+    color: var(--c-muted);
+    font: inherit;
     font-size: 12px;
+    font-weight: 650;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mobile-settings-menu button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .mobile-settings-menu button.active {
+    border-color: var(--c-border-strong);
+    background: var(--c-nav-active);
+    color: var(--c-primary);
   }
   .settings-content {
     flex: 1;
@@ -3033,6 +3141,11 @@ html.dark .settings-footer .settings-secondary:hover {
     justify-content: flex-end;
     padding: 0 5px 3px;
   }
+  .category-manager-actions button {
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+  }
   .category-manager-children {
     margin-left: 16px;
     padding-left: 15px;
@@ -3045,6 +3158,33 @@ html.dark .settings-footer .settings-secondary:hover {
   }
   .add-search-source {
     min-height: 66px;
+  }
+  .search-source-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+  }
+  .search-source-row .search-source-enable {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 44px;
+  }
+  .search-source-row > .icon-button {
+    grid-column: 2;
+    grid-row: 1;
+    width: 44px;
+    height: 44px;
+  }
+  .search-source-row .search-source-field {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+  .search-source-row .search-source-field input {
+    width: 100%;
+    min-width: 0;
   }
   .icon-source-options {
     grid-template-columns: 1fr;
@@ -3090,7 +3230,7 @@ html.dark .settings-footer .settings-secondary:hover {
   .settings-footer {
     flex-wrap: wrap;
     gap: 8px;
-    padding: 10px 12px;
+    padding: 10px 12px max(10px, env(safe-area-inset-bottom));
   }
   .settings-footer .settings-secondary,
   .settings-footer .settings-primary {
@@ -3100,6 +3240,25 @@ html.dark .settings-footer .settings-secondary:hover {
   .settings-error {
     flex: 0 0 100%;
     order: -1;
+  }
+  .settings-modal button,
+  .settings-modal input,
+  .settings-modal select,
+  .settings-modal textarea {
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 380px) {
+  .mobile-settings-menu {
+    grid-template-columns: 1fr;
+  }
+  .settings-header p,
+  .add-search-source-copy small {
+    display: none;
+  }
+  .settings-section.settings-card {
+    padding: 14px;
   }
 }
 </style>

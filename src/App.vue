@@ -58,6 +58,7 @@ import {
   Menu,
   MessageCircle,
   Moon,
+  MoreHorizontal,
   Music,
   Newspaper,
   Palette,
@@ -110,6 +111,8 @@ const searchQuery = ref('')
 const searchMode = ref('')
 const searchModeMenuOpen = ref(false)
 const searchModePicker = ref<HTMLElement | null>(null)
+const mobileActionsOpen = ref(false)
+const mobileActionsPicker = ref<HTMLElement | null>(null)
 const externalSearch = computed(() => searchMode.value !== '')
 const externalSources = computed(() =>
   (nav.config.search?.externalSources || []).filter(source => source.enabled && source.url)
@@ -651,8 +654,18 @@ function selectSearchMode(mode: string) {
 }
 
 function closeSearchModeMenuOnOutsideClick(event: PointerEvent) {
-  if (!searchModeMenuOpen.value) return
-  if (!searchModePicker.value?.contains(event.target as Node)) searchModeMenuOpen.value = false
+  const target = event.target as Node
+  if (searchModeMenuOpen.value && !searchModePicker.value?.contains(target)) {
+    searchModeMenuOpen.value = false
+  }
+  if (mobileActionsOpen.value && !mobileActionsPicker.value?.contains(target)) {
+    mobileActionsOpen.value = false
+  }
+}
+
+function runMobileAction(action: () => void) {
+  mobileActionsOpen.value = false
+  action()
 }
 
 function jumpTo(id: string) {
@@ -1413,6 +1426,93 @@ onBeforeUnmount(() => {
           <button v-else class="icon-button" title="管理登录" @click="authModalOpen = true">
             <Settings />
           </button>
+        </div>
+        <div ref="mobileActionsPicker" class="mobile-header-actions">
+          <button
+            type="button"
+            class="icon-button mobile-actions-trigger"
+            aria-label="打开页面操作"
+            aria-controls="mobile-actions-menu"
+            :aria-expanded="mobileActionsOpen"
+            @click="mobileActionsOpen = !mobileActionsOpen"
+          >
+            <MoreHorizontal />
+          </button>
+          <Transition name="search-menu">
+            <div
+              v-if="mobileActionsOpen"
+              id="mobile-actions-menu"
+              class="mobile-actions-menu"
+              role="menu"
+              aria-label="页面操作"
+            >
+              <div
+                v-if="weatherData.enabled && weatherData.temp != null"
+                class="mobile-weather-row"
+              >
+                <CloudSun :size="17" />
+                <span
+                  ><strong>{{ Math.round(weatherData.temp) }}°</strong
+                  ><small>{{ weatherData.text || weatherData.location || '当前天气' }}</small></span
+                >
+                <button type="button" @click="refreshWeather()">刷新</button>
+              </div>
+              <div class="mobile-actions-grid">
+                <button type="button" role="menuitem" @click="runMobileAction(toggleView)">
+                  <LayoutList v-if="compact" :size="18" /><Grid2X2 v-else :size="18" />
+                  <span>{{ compact ? '详细视图' : '紧凑视图' }}</span>
+                </button>
+                <button
+                  v-if="nav.token.value"
+                  type="button"
+                  role="menuitem"
+                  @click="runMobileAction(toggleHideTools)"
+                >
+                  <EyeOff v-if="hideTools" :size="18" /><Eye v-else :size="18" />
+                  <span>{{ hideTools ? '显示管理工具' : '隐藏管理工具' }}</span>
+                </button>
+                <button type="button" role="menuitem" @click="runMobileAction(toggleTheme)">
+                  <Sun v-if="dark" :size="18" /><Moon v-else :size="18" />
+                  <span>{{ dark ? '浅色主题' : '深色主题' }}</span>
+                </button>
+                <button
+                  v-if="nav.token.value"
+                  type="button"
+                  role="menuitem"
+                  @click="runMobileAction(() => (settingsOpen = true))"
+                >
+                  <Settings :size="18" /><span>设置</span>
+                </button>
+                <button
+                  v-if="nav.token.value"
+                  type="button"
+                  role="menuitem"
+                  class="primary"
+                  @click="runMobileAction(() => openLinkModal())"
+                >
+                  <Plus :size="18" /><span>添加网站</span>
+                </button>
+                <button
+                  v-else
+                  type="button"
+                  role="menuitem"
+                  class="primary"
+                  @click="runMobileAction(() => (authModalOpen = true))"
+                >
+                  <LogIn :size="18" /><span>管理登录</span>
+                </button>
+              </div>
+              <span v-if="nav.syncStatus.value !== 'idle'" class="mobile-sync-status">
+                {{
+                  nav.syncStatus.value === 'saving'
+                    ? '正在保存更改…'
+                    : nav.syncStatus.value === 'saved'
+                      ? '所有更改已保存'
+                      : '保存失败，请稍后重试'
+                }}
+              </span>
+            </div>
+          </Transition>
         </div>
       </header>
 
@@ -2656,6 +2756,9 @@ html.dark .flyout-item:hover {
   right: 0;
   z-index: 60;
   width: min(310px, calc(100vw - 24px));
+  max-height: calc(100dvh - 86px - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 9px;
   border: 1px solid #e2e7ef;
   border-radius: 15px;
@@ -2787,6 +2890,105 @@ html.dark .search-mode-divider::after {
   align-items: center;
   gap: 8px;
   margin-left: auto;
+}
+.mobile-header-actions {
+  display: none;
+  position: relative;
+  flex: 0 0 auto;
+}
+.mobile-actions-menu {
+  position: fixed;
+  top: calc(68px + env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
+  z-index: 65;
+  width: min(286px, calc(100vw - 16px));
+  max-height: calc(100dvh - 84px - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px;
+  border: 1px solid #e2e7ef;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 48px rgba(25, 38, 67, 0.2);
+  backdrop-filter: blur(16px);
+}
+.mobile-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.mobile-actions-grid > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 11px;
+  border: 1px solid #e8ecf2;
+  border-radius: 10px;
+  background: #f7f9fc;
+  color: #526076;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: left;
+}
+.mobile-actions-grid > button.primary {
+  grid-column: 1 / -1;
+  justify-content: center;
+  border-color: #466de0;
+  background: #466de0;
+  color: #fff;
+}
+.mobile-weather-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 9px;
+  border-radius: 10px;
+  background: #f7f9fc;
+  color: #5b687d;
+}
+.mobile-weather-row > span,
+.mobile-weather-row strong,
+.mobile-weather-row small {
+  display: block;
+}
+.mobile-weather-row small {
+  margin-top: 2px;
+  color: #8792a4;
+  font-size: 10px;
+}
+.mobile-weather-row button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: #eaf0ff;
+  color: #315ed5;
+}
+.mobile-sync-status {
+  display: block;
+  padding: 9px 4px 1px;
+  color: #758197;
+  font-size: 10px;
+  text-align: center;
+}
+html.dark .mobile-actions-menu {
+  border-color: #343d49;
+  background: rgba(31, 37, 47, 0.98);
+}
+html.dark .mobile-actions-grid > button,
+html.dark .mobile-weather-row {
+  border-color: #343d49;
+  background: #29313d;
+  color: #d3dae5;
+}
+html.dark .mobile-actions-grid > button.primary {
+  border-color: #536fe3;
+  background: #466de0;
+  color: #fff;
 }
 .weather-widget {
   display: inline-flex;
@@ -4500,13 +4702,37 @@ html.dark .secondary-button {
     display: grid;
   }
   .header {
-    padding: 0 12px;
+    gap: 8px;
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-left: max(8px, env(safe-area-inset-left));
+  }
+  .header-actions {
+    display: none;
+  }
+  .mobile-header-actions {
+    display: block;
+  }
+  .header > .mobile-only,
+  .mobile-actions-trigger {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+  }
+  .search-box {
+    min-width: 0;
+    gap: 6px;
+    padding: 0 10px;
+  }
+  .search-box input {
+    min-width: 0;
+    font-size: 16px;
   }
   .ticker-bar {
     margin: 8px 10px 0;
   }
   .search-mode-trigger {
-    width: 38px;
+    width: 40px;
+    min-height: 40px;
     padding: 0;
     justify-content: center;
   }
@@ -4516,8 +4742,8 @@ html.dark .secondary-button {
   }
   .search-mode-menu {
     position: fixed;
-    top: 68px;
-    right: 10px;
+    top: calc(68px + env(safe-area-inset-top));
+    right: max(8px, env(safe-area-inset-right));
   }
   .primary-button span {
     display: none;
@@ -4527,7 +4753,8 @@ html.dark .secondary-button {
     padding: 0;
   }
   .content {
-    padding: 22px 16px 70px;
+    padding: 22px max(16px, env(safe-area-inset-right)) calc(70px + env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
   }
   .link-grid {
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
@@ -4556,7 +4783,7 @@ html.dark .secondary-button {
   }
 }
 
-/* 手机端固定双列卡片，左右并排展示 */
+/* 手机端先保留双列，并在窄屏降为单列 */
 @media (max-width: 640px) {
   .ticker-bar {
     height: 38px;
@@ -4584,7 +4811,8 @@ html.dark .secondary-button {
     margin-top: 6px;
   }
   .content {
-    padding: 16px 12px 60px;
+    padding: 16px max(12px, env(safe-area-inset-right)) calc(60px + env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
   }
   .category-section h2 {
     font-size: 16px;
@@ -4645,6 +4873,91 @@ html.dark .secondary-button {
   .compact .link-card p {
     display: -webkit-box;
     -webkit-line-clamp: 2;
+  }
+  .modal-backdrop {
+    place-items: stretch;
+    padding: 0;
+  }
+  .modal {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+      max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    border-radius: 0;
+    scrollbar-gutter: stable;
+  }
+  .modal-title {
+    position: sticky;
+    top: calc(0px - max(16px, env(safe-area-inset-top)));
+    z-index: 5;
+    margin: 0 -4px 16px;
+    padding: 10px 4px 12px;
+    background: #fff;
+    border-bottom: 1px solid #edf0f5;
+  }
+  html.dark .modal-title {
+    background: #202833;
+    border-bottom-color: #343d49;
+  }
+  .modal-title .icon-button {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+  }
+  .modal input,
+  .modal textarea,
+  .modal select {
+    min-height: 46px;
+    font-size: 16px;
+  }
+  .website-enrich-status {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+  .website-enrich-status > button {
+    grid-column: 2;
+    justify-self: start;
+    min-height: 40px;
+  }
+  .ai-link-actions .secondary-button {
+    width: 100%;
+    min-height: 44px;
+  }
+  .category-tree-head > span {
+    display: none;
+  }
+  .modal-actions {
+    position: sticky;
+    bottom: calc(0px - max(16px, env(safe-area-inset-bottom)));
+    z-index: 5;
+    margin: 20px -4px 0;
+    padding: 12px 4px max(12px, env(safe-area-inset-bottom));
+    background: #fff;
+    border-top: 1px solid #edf0f5;
+  }
+  html.dark .modal-actions {
+    background: #202833;
+    border-top-color: #343d49;
+  }
+  .modal-actions > button {
+    flex: 1;
+    min-height: 46px;
+  }
+}
+
+@media (max-width: 520px) {
+  .link-grid,
+  .link-grid.compact,
+  .pinned-section .link-grid,
+  .pinned-section .link-grid.compact,
+  .loading-grid {
+    grid-template-columns: 1fr;
+  }
+  .internet-search-submit {
+    padding-inline: 7px;
+  }
+  .internet-search-submit span {
+    display: none;
   }
 }
 </style>
