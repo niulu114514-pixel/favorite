@@ -303,6 +303,17 @@ let suppressCategoryClick = false
 const collapsedCategoryIds = ref<Set<string>>(loadCollapsedCategoryIds())
 const searchTextCache = new WeakMap<LinkItem, string>()
 
+const pageOverlayOpen = computed(
+  () => linkModalOpen.value || authModalOpen.value || settingsOpen.value || commandOpen.value
+)
+
+function setPageScrollLocked(locked: boolean) {
+  document.documentElement.classList.toggle('overlay-scroll-locked', locked)
+  document.body.classList.toggle('overlay-scroll-locked', locked)
+}
+
+watch(pageOverlayOpen, setPageScrollLocked, { immediate: true })
+
 const categoryMap = computed(
   () => new Map(nav.categories.value.map(category => [category.id, category]))
 )
@@ -907,6 +918,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  setPageScrollLocked(false)
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('keydown', onCommandKeydown)
   cancelCategoryDragSession()
@@ -1188,8 +1200,7 @@ onBeforeUnmount(() => {
           <span>动态速递</span>
         </span>
         <div class="ticker-viewport">
-          <span v-if="tickerItems.length === 1" class="ticker-single">{{ tickerItems[0] }}</span>
-          <div v-else class="ticker-track">
+          <div class="ticker-track" :class="{ single: tickerItems.length === 1 }">
             <span v-for="(item, index) in tickerItems" :key="index" class="ticker-item">
               <span class="ticker-item-dot" aria-hidden="true"></span>{{ item }}
             </span>
@@ -1352,7 +1363,12 @@ onBeforeUnmount(() => {
       </div>
     </main>
 
-    <div v-if="linkModalOpen" class="modal-backdrop" @click.self="linkModalOpen = false">
+    <div
+      v-if="linkModalOpen"
+      class="modal-backdrop"
+      @click.self="linkModalOpen = false"
+      @wheel.self.prevent
+    >
       <form
         class="modal"
         role="dialog"
@@ -1456,107 +1472,105 @@ onBeforeUnmount(() => {
             <ChevronDown class="category-trigger-chevron" :size="18" />
           </button>
 
-          <transition name="category-tree">
-            <div
-              v-if="categoryPickerOpen"
-              id="link-category-tree"
-              class="category-tree"
-              role="listbox"
-              aria-label="选择网站分类"
-              @keydown.esc.stop="categoryPickerOpen = false"
-            >
-              <div class="category-tree-head">
-                <div>
-                  <strong>选择目录</strong>
-                  <span>二级分类会收纳在所属主分类下</span>
-                </div>
-                <span>{{ topLevelCategories.length }} 个主分类</span>
+          <div
+            v-if="categoryPickerOpen"
+            id="link-category-tree"
+            class="category-tree"
+            role="listbox"
+            aria-label="选择网站分类"
+            @keydown.esc.stop="categoryPickerOpen = false"
+          >
+            <div class="category-tree-head">
+              <div>
+                <strong>选择目录</strong>
+                <span>二级分类会收纳在所属主分类下</span>
               </div>
-              <div class="category-tree-groups">
-                <div
-                  v-for="parent in topLevelCategories"
-                  :key="parent.id"
-                  class="category-tree-group"
-                  :class="{
-                    active: editingLink.categoryId === parent.id,
-                    expanded: categoryPickerExpandedIds.has(parent.id),
-                  }"
-                >
-                  <div class="category-parent-row">
-                    <button
-                      type="button"
-                      class="category-tree-option category-parent-option"
-                      role="option"
-                      :aria-selected="editingLink.categoryId === parent.id"
-                      @click="selectLinkCategory(parent.id)"
-                    >
-                      <span class="category-option-icon">
-                        <template v-if="isEmojiIcon(parent.icon)">{{ parent.icon }}</template>
-                        <component v-else :is="getCategoryIcon(parent.icon)" :size="17" />
-                      </span>
-                      <span class="category-option-copy">
-                        <strong>{{ parent.name }}</strong>
-                        <small>
-                          {{
-                            categoryChildren(parent.id).length
-                              ? `${categoryChildren(parent.id).length} 个二级分类`
-                              : '主分类'
-                          }}
-                        </small>
-                      </span>
-                      <Check
-                        v-if="editingLink.categoryId === parent.id"
-                        class="category-option-check"
-                        :size="17"
-                      />
-                    </button>
-                    <button
-                      v-if="categoryChildren(parent.id).length"
-                      type="button"
-                      class="category-expand-button"
-                      :class="{ expanded: categoryPickerExpandedIds.has(parent.id) }"
-                      :aria-label="`${categoryPickerExpandedIds.has(parent.id) ? '收起' : '展开'}${parent.name}的二级分类`"
-                      :aria-expanded="categoryPickerExpandedIds.has(parent.id)"
-                      @click.stop="toggleCategoryPickerGroup(parent.id)"
-                    >
-                      <ChevronDown :size="17" />
-                    </button>
-                  </div>
-                  <div
-                    v-if="
-                      categoryChildren(parent.id).length && categoryPickerExpandedIds.has(parent.id)
-                    "
-                    class="category-child-list"
+              <span>{{ topLevelCategories.length }} 个主分类</span>
+            </div>
+            <div class="category-tree-groups">
+              <div
+                v-for="parent in topLevelCategories"
+                :key="parent.id"
+                class="category-tree-group"
+                :class="{
+                  active: editingLink.categoryId === parent.id,
+                  expanded: categoryPickerExpandedIds.has(parent.id),
+                }"
+              >
+                <div class="category-parent-row">
+                  <button
+                    type="button"
+                    class="category-tree-option category-parent-option"
+                    role="option"
+                    :aria-selected="editingLink.categoryId === parent.id"
+                    @click="selectLinkCategory(parent.id)"
                   >
-                    <button
-                      v-for="child in categoryChildren(parent.id)"
-                      :key="child.id"
-                      type="button"
-                      class="category-tree-option category-child-option"
-                      :class="{ active: editingLink.categoryId === child.id }"
-                      role="option"
-                      :aria-selected="editingLink.categoryId === child.id"
-                      @click="selectLinkCategory(child.id)"
+                    <span class="category-option-icon">
+                      <template v-if="isEmojiIcon(parent.icon)">{{ parent.icon }}</template>
+                      <component v-else :is="getCategoryIcon(parent.icon)" :size="17" />
+                    </span>
+                    <span class="category-option-copy">
+                      <strong>{{ parent.name }}</strong>
+                      <small>
+                        {{
+                          categoryChildren(parent.id).length
+                            ? `${categoryChildren(parent.id).length} 个二级分类`
+                            : '主分类'
+                        }}
+                      </small>
+                    </span>
+                    <Check
+                      v-if="editingLink.categoryId === parent.id"
+                      class="category-option-check"
+                      :size="17"
+                    />
+                  </button>
+                  <button
+                    v-if="categoryChildren(parent.id).length"
+                    type="button"
+                    class="category-expand-button"
+                    :class="{ expanded: categoryPickerExpandedIds.has(parent.id) }"
+                    :aria-label="`${categoryPickerExpandedIds.has(parent.id) ? '收起' : '展开'}${parent.name}的二级分类`"
+                    :aria-expanded="categoryPickerExpandedIds.has(parent.id)"
+                    @click.stop="toggleCategoryPickerGroup(parent.id)"
+                  >
+                    <ChevronDown :size="17" />
+                  </button>
+                </div>
+                <div
+                  v-if="
+                    categoryChildren(parent.id).length && categoryPickerExpandedIds.has(parent.id)
+                  "
+                  class="category-child-list"
+                >
+                  <button
+                    v-for="child in categoryChildren(parent.id)"
+                    :key="child.id"
+                    type="button"
+                    class="category-tree-option category-child-option"
+                    :class="{ active: editingLink.categoryId === child.id }"
+                    role="option"
+                    :aria-selected="editingLink.categoryId === child.id"
+                    @click="selectLinkCategory(child.id)"
+                  >
+                    <span class="category-child-branch" aria-hidden="true"></span>
+                    <span class="category-option-icon small">
+                      <template v-if="isEmojiIcon(child.icon)">{{ child.icon }}</template>
+                      <component v-else :is="getCategoryIcon(child.icon)" :size="15" />
+                    </span>
+                    <span class="category-option-copy"
+                      ><strong>{{ child.name }}</strong></span
                     >
-                      <span class="category-child-branch" aria-hidden="true"></span>
-                      <span class="category-option-icon small">
-                        <template v-if="isEmojiIcon(child.icon)">{{ child.icon }}</template>
-                        <component v-else :is="getCategoryIcon(child.icon)" :size="15" />
-                      </span>
-                      <span class="category-option-copy"
-                        ><strong>{{ child.name }}</strong></span
-                      >
-                      <Check
-                        v-if="editingLink.categoryId === child.id"
-                        class="category-option-check"
-                        :size="16"
-                      />
-                    </button>
-                  </div>
+                    <Check
+                      v-if="editingLink.categoryId === child.id"
+                      class="category-option-check"
+                      :size="16"
+                    />
+                  </button>
                 </div>
               </div>
             </div>
-          </transition>
+          </div>
           <p v-if="selectedCategoryDetails?.childCount" class="category-picker-help">
             当前保存到主分类；其下 {{ selectedCategoryDetails.childCount }} 个二级分类仍会独立展示。
           </p>
@@ -1584,7 +1598,12 @@ onBeforeUnmount(() => {
       </form>
     </div>
 
-    <div v-if="authModalOpen" class="modal-backdrop" @click.self="authModalOpen = false">
+    <div
+      v-if="authModalOpen"
+      class="modal-backdrop"
+      @click.self="authModalOpen = false"
+      @wheel.self.prevent
+    >
       <form
         class="login-card"
         role="dialog"
@@ -1658,7 +1677,12 @@ onBeforeUnmount(() => {
 
     <!-- 命令面板（Ctrl+K） -->
     <Transition name="palette">
-      <div v-if="commandOpen" class="command-overlay" @mousedown.self="closeCommand">
+      <div
+        v-if="commandOpen"
+        class="command-overlay"
+        @mousedown.self="closeCommand"
+        @wheel.self.prevent
+      >
         <div class="command-panel" role="dialog" aria-modal="true" aria-label="命令面板">
           <div class="command-input-wrap">
             <Search :size="18" />
@@ -1698,6 +1722,11 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+:global(html.overlay-scroll-locked),
+:global(body.overlay-scroll-locked) {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
 .app-shell {
   min-height: 100vh;
   background: #eef1f9;
@@ -2408,13 +2437,6 @@ html.dark .search-switch select {
   right: 0;
   background: linear-gradient(270deg, #f8fbff, transparent);
 }
-.ticker-single {
-  display: block;
-  overflow: hidden;
-  color: #566176;
-  font-size: 13px;
-  text-overflow: ellipsis;
-}
 .ticker-track {
   display: flex;
   align-items: center;
@@ -2931,10 +2953,7 @@ html.dark .command-empty {
   white-space: nowrap;
 }
 .category-tree-groups {
-  max-height: 300px;
   padding: 6px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 .category-tree-group + .category-tree-group {
   margin-top: 3px;
@@ -3062,18 +3081,6 @@ html.dark .command-empty {
   width: 12px;
   height: 1px;
   background: #dfe4f0;
-}
-.category-tree-enter-active,
-.category-tree-leave-active {
-  transition:
-    opacity 0.16s ease,
-    transform 0.16s ease;
-  transform-origin: top;
-}
-.category-tree-enter-from,
-.category-tree-leave-to {
-  opacity: 0;
-  transform: translateY(-5px) scaleY(0.98);
 }
 .category-picker-help {
   margin: 7px 2px 0;
@@ -3342,7 +3349,6 @@ html.dark .command-empty {
   position: fixed;
   inset: 0;
   background: rgba(18, 27, 42, 0.48);
-  backdrop-filter: blur(3px);
   display: grid;
   place-items: center;
   z-index: 100;
@@ -3352,6 +3358,7 @@ html.dark .command-empty {
   width: min(540px, 100%);
   max-height: calc(100vh - 40px);
   overflow: auto;
+  overscroll-behavior: contain;
   background: #fff;
   border-radius: 18px;
   padding: 23px;
@@ -3739,8 +3746,7 @@ html.dark .ticker-bar {
   border-color: rgba(172, 194, 230, 0.16);
   box-shadow: 0 5px 18px rgba(0, 0, 0, 0.12);
 }
-html.dark .ticker-item,
-html.dark .ticker-single {
+html.dark .ticker-item {
   color: #9ba7b7;
 }
 html.dark .ticker-label {
@@ -4020,7 +4026,7 @@ html.dark .secondary-button {
     display: none;
   }
   .category-tree-groups {
-    max-height: 250px;
+    padding-inline: 4px;
   }
   .category-level-pill {
     display: none;

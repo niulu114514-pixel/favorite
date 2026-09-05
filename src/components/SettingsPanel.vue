@@ -13,6 +13,7 @@ import {
   Camera,
   Car,
   Check,
+  ChevronDown,
   Clapperboard,
   Clock,
   Cloud,
@@ -228,6 +229,7 @@ watch(
     backups.value = []
     webdavBackupsLoaded.value = false
     categoryModalOpen.value = false
+    expandedManagerCategoryIds.value = new Set()
     bgPreviewUrl.value = ''
     mcpToken.value = ''
     mcpTokenMessage.value = ''
@@ -511,6 +513,7 @@ async function restoreNow(filename: string) {
 // ===== 分类创建 / 编辑（弹窗）=====
 const categoryModalOpen = ref(false)
 const savingCategory = ref(false)
+const expandedManagerCategoryIds = ref<Set<string>>(new Set())
 
 type CategoryModal = { id: string | null; name: string; parentId: string; icon: string }
 const categoryModal = ref<CategoryModal>({
@@ -640,6 +643,17 @@ function childrenOf(parentId: string) {
   return props.categories.filter(c => c.parentId === parentId)
 }
 
+function isManagerCategoryExpanded(categoryId: string) {
+  return expandedManagerCategoryIds.value.has(categoryId)
+}
+
+function toggleManagerCategory(categoryId: string) {
+  const next = new Set(expandedManagerCategoryIds.value)
+  if (next.has(categoryId)) next.delete(categoryId)
+  else next.add(categoryId)
+  expandedManagerCategoryIds.value = next
+}
+
 function openNewCategory() {
   categoryModal.value = { id: null, name: '', parentId: '', icon: 'Folder' }
   categoryModalOpen.value = true
@@ -647,6 +661,9 @@ function openNewCategory() {
 
 /** 直接给指定一级分类添加二级分类，默认选中该父级 */
 function openAddChild(parent: Category) {
+  if (!expandedManagerCategoryIds.value.has(parent.id)) {
+    expandedManagerCategoryIds.value = new Set([...expandedManagerCategoryIds.value, parent.id])
+  }
   categoryModal.value = { id: null, name: '', parentId: parent.id, icon: 'Folder' }
   categoryModalOpen.value = true
 }
@@ -795,7 +812,7 @@ function formatSize(bytes: number) {
 </script>
 
 <template>
-  <div v-if="open" class="settings-backdrop" @click.self="emit('close')">
+  <div v-if="open" class="settings-backdrop" @click.self="emit('close')" @wheel.self.prevent>
     <div class="settings-modal" role="dialog" aria-modal="true" aria-label="设置">
       <header class="settings-header">
         <div>
@@ -991,103 +1008,141 @@ function formatSize(bytes: number) {
             v-if="activeSection === 'categories'"
             class="settings-section settings-card"
           >
-            <h3><Folder :size="17" /> 分类排序</h3>
-            <p class="settings-help">
-              一级分类可上下移动并连同其二级子分类一起调整；二级仅能在所在父级内移动。渲染顺序与侧栏、首页一致。
-            </p>
-            <div class="settings-inline no-gap">
-              <button class="settings-primary" @click="openNewCategory">
-                <FolderPlus :size="15" />新建分类
+            <div class="category-manager-heading">
+              <div>
+                <h3><Folder :size="17" /> 分类目录</h3>
+                <p class="settings-help">
+                  主分类按卡片排列，展开后管理其二级分类；移动顺序会同步到侧栏和首页。
+                </p>
+              </div>
+              <button class="settings-primary category-create-button" @click="openNewCategory">
+                <FolderPlus :size="15" />新建主分类
               </button>
             </div>
 
-            <div v-if="topRows.length" class="category-sort-list">
-              <template v-for="(parent, pIndex) in topRows" :key="parent.id">
-                <div
-                  class="category-sort-row"
-                  :class="{ 'has-children': childrenOf(parent.id).length }"
-                >
-                  <template v-if="isEmojiIcon(parent.icon)">
-                    <span class="emoji-icon">{{ parent.icon }}</span>
-                  </template>
-                  <component v-else :is="categoryIcon(parent.icon)" :size="15" />
-                  <span class="category-sort-name">{{ parent.name }}</span>
-                  <div class="category-sort-actions">
+            <div v-if="topRows.length" class="category-manager-list">
+              <article
+                v-for="(parent, pIndex) in topRows"
+                :key="parent.id"
+                class="category-manager-card"
+                :class="{ expanded: isManagerCategoryExpanded(parent.id) }"
+              >
+                <div class="category-manager-parent">
+                  <button
+                    type="button"
+                    class="category-manager-summary"
+                    :class="{ expandable: childrenOf(parent.id).length }"
+                    :aria-expanded="
+                      childrenOf(parent.id).length
+                        ? isManagerCategoryExpanded(parent.id)
+                        : undefined
+                    "
+                    @click="childrenOf(parent.id).length && toggleManagerCategory(parent.id)"
+                  >
+                    <span class="category-manager-icon">
+                      <template v-if="isEmojiIcon(parent.icon)">{{ parent.icon }}</template>
+                      <component v-else :is="categoryIcon(parent.icon)" :size="17" />
+                    </span>
+                    <span class="category-manager-copy">
+                      <strong>{{ parent.name }}</strong>
+                      <small>
+                        主分类
+                        <template v-if="childrenOf(parent.id).length">
+                          · {{ childrenOf(parent.id).length }} 个二级分类
+                        </template>
+                      </small>
+                    </span>
+                    <ChevronDown
+                      v-if="childrenOf(parent.id).length"
+                      class="category-manager-chevron"
+                      :size="17"
+                    />
+                  </button>
+                  <div class="category-manager-actions">
                     <button
                       v-if="parent.id !== 'common'"
-                      :title="'添加二级分类'"
+                      title="添加二级分类"
                       @click="openAddChild(parent)"
                     >
                       <FolderPlus :size="14" />
                     </button>
-                    <button :title="'编辑'" @click="openEditCategory(parent)">
+                    <button title="编辑主分类" @click="openEditCategory(parent)">
                       <Pencil :size="14" />
                     </button>
                     <button
                       v-if="parent.id !== 'common'"
-                      :title="'删除'"
+                      title="删除主分类"
                       class="danger"
                       @click="confirmRemoveCategory(parent)"
                     >
                       <Trash2 :size="14" />
                     </button>
+                    <span class="category-manager-action-divider"></span>
                     <button
                       :disabled="pIndex === 0"
-                      :title="'上移'"
+                      title="上移主分类"
                       @click="moveRow(null, pIndex, -1)"
                     >
                       <ArrowUp :size="14" />
                     </button>
                     <button
                       :disabled="pIndex === topRows.length - 1"
-                      :title="'下移'"
+                      title="下移主分类"
                       @click="moveRow(null, pIndex, 1)"
                     >
                       <ArrowDown :size="14" />
                     </button>
                   </div>
                 </div>
+
                 <div
-                  v-for="(child, cIndex) in childrenOf(parent.id)"
-                  :key="child.id"
-                  class="category-sort-row is-child"
+                  v-if="childrenOf(parent.id).length && isManagerCategoryExpanded(parent.id)"
+                  class="category-manager-children"
                 >
-                  <span class="child-branch">
-                    <template v-if="isEmojiIcon(child.icon)">
-                      <span class="emoji-icon">{{ child.icon }}</span>
-                    </template>
-                    <component v-else :is="categoryIcon(child.icon)" :size="15" />
-                  </span>
-                  <span class="category-sort-name">{{ child.name }}</span>
-                  <div class="category-sort-actions">
-                    <button :title="'编辑'" @click="openEditCategory(child)">
-                      <Pencil :size="14" />
-                    </button>
-                    <button
-                      v-if="child.id !== 'common'"
-                      :title="'删除'"
-                      class="danger"
-                      @click="confirmRemoveCategory(child)"
-                    >
-                      <Trash2 :size="14" />
-                    </button>
-                    <button
-                      :disabled="cIndex === 0"
-                      :title="'上移'"
-                      @click="moveRow(parent.id, cIndex, -1)"
-                    >
-                      <ArrowUp :size="14" />
-                    </button>
-                    <button
-                      :disabled="cIndex === childrenOf(parent.id).length - 1"
-                      :title="'下移'"
-                      @click="moveRow(parent.id, cIndex, 1)"
-                    >
-                      <ArrowDown :size="14" />
-                    </button>
+                  <div
+                    v-for="(child, cIndex) in childrenOf(parent.id)"
+                    :key="child.id"
+                    class="category-manager-child"
+                  >
+                    <span class="category-manager-branch" aria-hidden="true"></span>
+                    <span class="category-manager-icon child">
+                      <template v-if="isEmojiIcon(child.icon)">{{ child.icon }}</template>
+                      <component v-else :is="categoryIcon(child.icon)" :size="15" />
+                    </span>
+                    <span class="category-manager-copy">
+                      <strong>{{ child.name }}</strong>
+                      <small>二级分类</small>
+                    </span>
+                    <div class="category-manager-actions child-actions">
+                      <button title="编辑二级分类" @click="openEditCategory(child)">
+                        <Pencil :size="14" />
+                      </button>
+                      <button
+                        title="删除二级分类"
+                        class="danger"
+                        @click="confirmRemoveCategory(child)"
+                      >
+                        <Trash2 :size="14" />
+                      </button>
+                      <span class="category-manager-action-divider"></span>
+                      <button
+                        :disabled="cIndex === 0"
+                        title="上移二级分类"
+                        @click="moveRow(parent.id, cIndex, -1)"
+                      >
+                        <ArrowUp :size="14" />
+                      </button>
+                      <button
+                        :disabled="cIndex === childrenOf(parent.id).length - 1"
+                        title="下移二级分类"
+                        @click="moveRow(parent.id, cIndex, 1)"
+                      >
+                        <ArrowDown :size="14" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </template>
+              </article>
             </div>
           </section>
 
@@ -1567,6 +1622,7 @@ function formatSize(bytes: number) {
     v-if="categoryModalOpen"
     class="settings-backdrop category-modal-wrap"
     @click.self="closeCategoryForm"
+    @wheel.self.prevent
   >
     <div class="category-modal" role="dialog" aria-modal="true">
       <div class="category-modal-header">
@@ -1685,7 +1741,6 @@ html.dark .settings-backdrop {
   place-items: center;
   padding: 20px;
   background: var(--c-overlay);
-  backdrop-filter: blur(3px);
 }
 .settings-modal {
   width: min(980px, 100%);
@@ -1697,6 +1752,7 @@ html.dark .settings-backdrop {
   border: 1px solid var(--c-border);
   border-radius: 20px;
   box-shadow: 0 28px 90px rgba(27, 40, 72, 0.28);
+  contain: layout paint;
 }
 .settings-header {
   display: flex;
@@ -1803,6 +1859,8 @@ html.dark .settings-backdrop {
   overflow-y: auto;
   padding: 18px 22px 24px;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  contain: layout paint;
 }
 .settings-section.settings-card {
   margin: 0 0 14px;
@@ -2161,88 +2219,179 @@ html.dark .settings-secondary {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* ===== 分类排序 ===== */
-.category-sort-list {
+/* ===== 分类目录管理 ===== */
+.category-manager-heading {
   display: flex;
-  flex-direction: column;
-  gap: 7px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 15px;
 }
-.category-sort-row {
+.category-manager-heading h3,
+.category-manager-heading .settings-help {
+  margin-bottom: 6px;
+}
+.category-create-button {
+  flex: none;
+}
+.category-manager-list {
+  display: grid;
+  gap: 8px;
+}
+.category-manager-card {
+  border: 1px solid var(--c-border);
+  border-radius: 13px;
+  background: var(--c-surface);
+  overflow: hidden;
+  contain: content;
+  content-visibility: auto;
+  contain-intrinsic-size: 58px;
+}
+.category-manager-card.expanded {
+  border-color: color-mix(in srgb, var(--c-primary) 38%, var(--c-border));
+}
+.category-manager-parent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 58px;
+  padding: 6px 8px;
+}
+.category-manager-summary {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 11px;
-  border: 1px solid var(--c-border);
-  border-radius: 11px;
-  background: var(--c-surface);
-  color: var(--c-muted);
-}
-.category-sort-row.is-child {
-  margin-left: 26px;
-  background: color-mix(in srgb, var(--c-surface) 70%, transparent);
-  border-style: dashed;
-}
-.category-sort-row.has-children {
-  border-left: 3px solid var(--c-primary);
-}
-.category-sort-row .child-branch {
-  color: var(--c-faint);
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-}
-.category-sort-row > svg {
-  color: var(--c-primary);
-  flex: 0 0 auto;
-}
-.category-sort-row > .emoji-icon {
-  font-size: 16px;
-  line-height: 1;
-  display: inline-flex;
-}
-.category-sort-row .child-branch .emoji-icon {
-  font-size: 15px;
-  line-height: 1;
-  display: inline-flex;
-}
-.category-sort-name {
   flex: 1;
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--c-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.category-sort-actions {
-  display: flex;
-  gap: 4px;
-}
-.category-sort-actions button {
-  width: 28px;
-  height: 28px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 5px 7px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 9px;
   background: transparent;
-  color: var(--c-muted);
-  display: grid;
-  place-items: center;
+  color: var(--c-text);
+  text-align: left;
+}
+.category-manager-summary.expandable {
   cursor: pointer;
 }
-.category-sort-actions button:hover:not(:disabled) {
-  background: rgba(89, 124, 226, 0.14);
+.category-manager-summary.expandable:hover {
+  background: var(--c-nav-active);
+}
+.category-manager-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--c-nav-active);
+  color: var(--c-primary);
+  font-size: 17px;
+}
+.category-manager-icon.child {
+  flex-basis: 29px;
+  width: 29px;
+  height: 29px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.category-manager-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+.category-manager-copy strong {
+  overflow: hidden;
+  color: var(--c-text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.category-manager-copy small {
+  color: var(--c-faint);
+  font-size: 10px;
+}
+.category-manager-chevron {
+  flex: none;
+  color: var(--c-muted);
+  transition: transform 0.14s ease;
+}
+.category-manager-card.expanded .category-manager-chevron {
+  transform: rotate(180deg);
+}
+.category-manager-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+.category-manager-actions button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--c-muted);
+  cursor: pointer;
+}
+.category-manager-actions button:hover:not(:disabled) {
+  background: var(--c-nav-active);
   color: var(--c-primary);
 }
-.category-sort-actions button:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-.category-sort-actions button.danger:hover {
-  background: rgba(220, 53, 69, 0.12);
+.category-manager-actions button.danger:hover:not(:disabled) {
+  background: rgba(220, 53, 69, 0.11);
   color: #dc3545;
 }
-.settings-inline.no-gap {
-  margin-top: 4px;
+.category-manager-actions button:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+.category-manager-action-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--c-border);
+}
+.category-manager-children {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  margin: 0 10px 9px 27px;
+  padding: 8px 0 1px 20px;
+  border-top: 1px solid var(--c-border);
+}
+.category-manager-children::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 21px;
+  left: 5px;
+  width: 1px;
+  background: var(--c-border-strong);
+}
+.category-manager-child {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 4px 6px;
+  border-radius: 9px;
+}
+.category-manager-child:hover {
+  background: color-mix(in srgb, var(--c-nav-active) 74%, transparent);
+}
+.category-manager-branch {
+  position: absolute;
+  top: 50%;
+  left: -15px;
+  width: 12px;
+  height: 1px;
+  background: var(--c-border-strong);
 }
 /* ===== 分类新建/编辑表单 ===== */
 .category-form {
@@ -2622,6 +2771,36 @@ html.dark .settings-footer .settings-secondary:hover {
   .settings-grid {
     grid-template-columns: 1fr;
     gap: 10px;
+  }
+  .category-manager-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .category-create-button {
+    width: 100%;
+    min-height: 44px;
+  }
+  .category-manager-parent {
+    flex-wrap: wrap;
+  }
+  .category-manager-summary {
+    flex-basis: 100%;
+  }
+  .category-manager-parent > .category-manager-actions {
+    width: 100%;
+    justify-content: flex-end;
+    padding: 0 5px 3px;
+  }
+  .category-manager-children {
+    margin-left: 16px;
+    padding-left: 15px;
+  }
+  .category-manager-child {
+    gap: 7px;
+  }
+  .category-manager-child .category-manager-copy small {
+    display: none;
   }
   .add-search-source {
     min-height: 66px;
