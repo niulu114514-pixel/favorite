@@ -21,6 +21,7 @@ import {
   Camera,
   Car,
   Check,
+  ChevronDown,
   ChevronRight,
   Clapperboard,
   Clock,
@@ -261,6 +262,8 @@ const savedViewMode = localStorage.getItem('cloudnav_view_mode')
 const hasSavedViewMode = savedViewMode === 'compact' || savedViewMode === 'detailed'
 const compact = ref(savedViewMode === 'compact')
 const linkModalOpen = ref(false)
+const categoryPickerOpen = ref(false)
+const categoryPickerExpandedIds = ref<Set<string>>(new Set())
 const authModalOpen = ref(false)
 const settingsOpen = ref(false)
 const hideTools = ref(localStorage.getItem('cloudnav_hide_tools') === '1')
@@ -319,6 +322,17 @@ const childCategories = computed(() => {
   return grouped
 })
 
+const selectedCategoryDetails = computed(() => {
+  const category = categoryMap.value.get(editingLink.value.categoryId || '')
+  if (!category) return null
+  const parent = category.parentId ? categoryMap.value.get(category.parentId) : undefined
+  return {
+    category,
+    parent,
+    childCount: categoryChildren(category.id).length,
+  }
+})
+
 // Keep the content order identical to the sidebar order. Categories are stored
 // as a flat array for backwards compatibility, so the view needs to rebuild
 // the parent -> child blocks before rendering them.
@@ -342,6 +356,26 @@ const orderedCategories = computed(() => {
 
 function categoryChildren(categoryId: string) {
   return childCategories.value.get(categoryId) || []
+}
+
+function prepareCategoryPicker(categoryId?: string) {
+  const category = categoryMap.value.get(categoryId || '')
+  const parentId =
+    category?.parentId || (category && categoryChildren(category.id).length ? category.id : '')
+  categoryPickerExpandedIds.value = parentId ? new Set([parentId]) : new Set()
+  categoryPickerOpen.value = false
+}
+
+function toggleCategoryPickerGroup(categoryId: string) {
+  const next = new Set(categoryPickerExpandedIds.value)
+  if (next.has(categoryId)) next.delete(categoryId)
+  else next.add(categoryId)
+  categoryPickerExpandedIds.value = next
+}
+
+function selectLinkCategory(categoryId: string) {
+  editingLink.value.categoryId = categoryId
+  categoryPickerOpen.value = false
 }
 
 function loadCollapsedCategoryIds() {
@@ -716,12 +750,14 @@ function reorderCategoryLevel(draggedId: string, targetId: string) {
 
 function openLinkModal(link?: LinkItem) {
   editingLink.value = link ? { ...link } : { categoryId: nav.categories.value[0]?.id || 'common' }
+  prepareCategoryPicker(editingLink.value.categoryId)
   iconError.value = ''
   linkModalOpen.value = true
 }
 
 function openLinkModalForCategory(categoryId: string) {
   editingLink.value = { categoryId }
+  prepareCategoryPicker(categoryId)
   iconError.value = ''
   linkModalOpen.value = true
 }
@@ -1145,19 +1181,22 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <div v-if="tickerItems.length" class="ticker-bar">
-        <span class="ticker-label"><TrendingUp :size="14" /><span>动态</span></span>
+      <aside v-if="tickerItems.length" class="ticker-bar" aria-label="动态速递">
+        <span class="ticker-label">
+          <span class="ticker-live-dot" aria-hidden="true"></span>
+          <Sparkles :size="14" />
+          <span>动态速递</span>
+        </span>
         <div class="ticker-viewport">
-          <div class="ticker-track">
-            <span
-              v-for="(item, index) in [...tickerItems, ...tickerItems]"
-              :key="index"
-              class="ticker-item"
-              >{{ item }}</span
-            >
+          <span v-if="tickerItems.length === 1" class="ticker-single">{{ tickerItems[0] }}</span>
+          <div v-else class="ticker-track">
+            <span v-for="(item, index) in tickerItems" :key="index" class="ticker-item">
+              <span class="ticker-item-dot" aria-hidden="true"></span>{{ item }}
+            </span>
           </div>
         </div>
-      </div>
+        <span class="ticker-pause-hint">悬停暂停</span>
+      </aside>
 
       <div class="content">
         <div v-if="nav.loading.value" class="loading-grid">
@@ -1383,22 +1422,161 @@ onBeforeUnmount(() => {
           <span v-if="iconError" class="form-error">{{ iconError }}</span>
           <p class="form-hint">自动从网站获取 favicon，并支持多来源智能回退，无需手动上传。</p>
         </div>
-        <label
-          >分类<select v-model="editingLink.categoryId">
-            <option
-              v-for="category in nav.categories.value"
-              :key="category.id"
-              :value="category.id"
+        <div class="category-picker">
+          <span class="field-label">保存到分类</span>
+          <button
+            type="button"
+            class="category-picker-trigger"
+            :class="{ open: categoryPickerOpen }"
+            aria-controls="link-category-tree"
+            :aria-expanded="categoryPickerOpen"
+            @click="categoryPickerOpen = !categoryPickerOpen"
+          >
+            <span v-if="selectedCategoryDetails" class="category-path-icon">
+              <template v-if="isEmojiIcon(selectedCategoryDetails.category.icon)">
+                {{ selectedCategoryDetails.category.icon }}
+              </template>
+              <component
+                v-else
+                :is="getCategoryIcon(selectedCategoryDetails.category.icon)"
+                :size="17"
+              />
+            </span>
+            <span v-if="selectedCategoryDetails" class="category-path-text">
+              <span v-if="selectedCategoryDetails.parent" class="category-path-parent">
+                {{ selectedCategoryDetails.parent.name }}
+                <ChevronRight :size="13" />
+              </span>
+              <strong>{{ selectedCategoryDetails.category.name }}</strong>
+            </span>
+            <span v-else class="category-picker-placeholder">选择一个分类</span>
+            <span v-if="selectedCategoryDetails" class="category-level-pill">
+              {{ selectedCategoryDetails.parent ? '二级' : '主分类' }}
+            </span>
+            <ChevronDown class="category-trigger-chevron" :size="18" />
+          </button>
+
+          <transition name="category-tree">
+            <div
+              v-if="categoryPickerOpen"
+              id="link-category-tree"
+              class="category-tree"
+              role="listbox"
+              aria-label="选择网站分类"
+              @keydown.esc.stop="categoryPickerOpen = false"
             >
-              {{ category.name }}
-            </option>
-          </select></label
+              <div class="category-tree-head">
+                <div>
+                  <strong>选择目录</strong>
+                  <span>二级分类会收纳在所属主分类下</span>
+                </div>
+                <span>{{ topLevelCategories.length }} 个主分类</span>
+              </div>
+              <div class="category-tree-groups">
+                <div
+                  v-for="parent in topLevelCategories"
+                  :key="parent.id"
+                  class="category-tree-group"
+                  :class="{
+                    active: editingLink.categoryId === parent.id,
+                    expanded: categoryPickerExpandedIds.has(parent.id),
+                  }"
+                >
+                  <div class="category-parent-row">
+                    <button
+                      type="button"
+                      class="category-tree-option category-parent-option"
+                      role="option"
+                      :aria-selected="editingLink.categoryId === parent.id"
+                      @click="selectLinkCategory(parent.id)"
+                    >
+                      <span class="category-option-icon">
+                        <template v-if="isEmojiIcon(parent.icon)">{{ parent.icon }}</template>
+                        <component v-else :is="getCategoryIcon(parent.icon)" :size="17" />
+                      </span>
+                      <span class="category-option-copy">
+                        <strong>{{ parent.name }}</strong>
+                        <small>
+                          {{
+                            categoryChildren(parent.id).length
+                              ? `${categoryChildren(parent.id).length} 个二级分类`
+                              : '主分类'
+                          }}
+                        </small>
+                      </span>
+                      <Check
+                        v-if="editingLink.categoryId === parent.id"
+                        class="category-option-check"
+                        :size="17"
+                      />
+                    </button>
+                    <button
+                      v-if="categoryChildren(parent.id).length"
+                      type="button"
+                      class="category-expand-button"
+                      :class="{ expanded: categoryPickerExpandedIds.has(parent.id) }"
+                      :aria-label="`${categoryPickerExpandedIds.has(parent.id) ? '收起' : '展开'}${parent.name}的二级分类`"
+                      :aria-expanded="categoryPickerExpandedIds.has(parent.id)"
+                      @click.stop="toggleCategoryPickerGroup(parent.id)"
+                    >
+                      <ChevronDown :size="17" />
+                    </button>
+                  </div>
+                  <div
+                    v-if="
+                      categoryChildren(parent.id).length && categoryPickerExpandedIds.has(parent.id)
+                    "
+                    class="category-child-list"
+                  >
+                    <button
+                      v-for="child in categoryChildren(parent.id)"
+                      :key="child.id"
+                      type="button"
+                      class="category-tree-option category-child-option"
+                      :class="{ active: editingLink.categoryId === child.id }"
+                      role="option"
+                      :aria-selected="editingLink.categoryId === child.id"
+                      @click="selectLinkCategory(child.id)"
+                    >
+                      <span class="category-child-branch" aria-hidden="true"></span>
+                      <span class="category-option-icon small">
+                        <template v-if="isEmojiIcon(child.icon)">{{ child.icon }}</template>
+                        <component v-else :is="getCategoryIcon(child.icon)" :size="15" />
+                      </span>
+                      <span class="category-option-copy"
+                        ><strong>{{ child.name }}</strong></span
+                      >
+                      <Check
+                        v-if="editingLink.categoryId === child.id"
+                        class="category-option-check"
+                        :size="16"
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </transition>
+          <p v-if="selectedCategoryDetails?.childCount" class="category-picker-help">
+            当前保存到主分类；其下 {{ selectedCategoryDetails.childCount }} 个二级分类仍会独立展示。
+          </p>
+        </div>
+        <button
+          v-if="editingLink.categoryId !== 'common'"
+          type="button"
+          class="common-feature-toggle"
+          :class="{ active: editingLink.alsoInCommon }"
+          role="switch"
+          :aria-checked="Boolean(editingLink.alsoInCommon)"
+          @click="editingLink.alsoInCommon = !editingLink.alsoInCommon"
         >
-        <label v-if="editingLink.categoryId !== 'common'" class="common-toggle">
-          <input v-model="editingLink.alsoInCommon" type="checkbox" />
-          <span>同时加入「常用推荐」</span>
-          <em>该网站除显示在所选分类外，也会出现在常用推荐里</em>
-        </label>
+          <span class="common-feature-icon"><Star :size="18" /></span>
+          <span class="common-feature-copy">
+            <strong>同时展示在常用推荐</strong>
+            <small>保留当前分类，并额外出现在首页常用推荐中</small>
+          </span>
+          <span class="switch-track" aria-hidden="true"><span></span></span>
+        </button>
         <div class="modal-actions">
           <button type="button" class="secondary-button" @click="linkModalOpen = false">取消</button
           ><button class="primary-button"><Check :size="17" />保存</button>
@@ -2175,49 +2353,106 @@ html.dark .search-switch select {
 .ticker-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 34px;
-  padding: 0 16px;
-  border-bottom: 1px solid #eaf0f6;
-  background: #f6f9fc;
+  gap: 14px;
+  height: 42px;
+  margin: 10px 18px 0;
+  padding: 0 12px;
+  border: 1px solid #e4eaf4;
+  border-radius: 13px;
+  background: linear-gradient(110deg, #f5f7ff 0%, #fbfcff 58%, #f7fbff 100%);
+  box-shadow: 0 5px 18px rgba(57, 75, 128, 0.06);
   overflow: hidden;
   white-space: nowrap;
 }
 .ticker-label {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex: none;
-  font-size: 12px;
-  font-weight: 600;
-  color: #315ed5;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: rgba(94, 94, 230, 0.09);
+  font-size: 11px;
+  font-weight: 750;
+  color: #5964d9;
+  letter-spacing: 0.02em;
+}
+.ticker-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #42bd83;
+  box-shadow: 0 0 0 3px rgba(66, 189, 131, 0.14);
 }
 .ticker-viewport {
+  position: relative;
   flex: 1;
   min-width: 0;
   overflow: hidden;
 }
+.ticker-viewport::before,
+.ticker-viewport::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  pointer-events: none;
+}
+.ticker-viewport::before {
+  left: 0;
+  background: linear-gradient(90deg, #fbfcff, transparent);
+}
+.ticker-viewport::after {
+  right: 0;
+  background: linear-gradient(270deg, #f8fbff, transparent);
+}
+.ticker-single {
+  display: block;
+  overflow: hidden;
+  color: #566176;
+  font-size: 13px;
+  text-overflow: ellipsis;
+}
 .ticker-track {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 48px;
+  gap: 44px;
+  width: max-content;
+  padding-left: 100%;
   will-change: transform;
   animation: ticker-scroll 30s linear infinite;
+  animation-delay: -8s;
 }
-.ticker-track:hover {
+.ticker-bar:hover .ticker-track {
   animation-play-state: paused;
 }
 .ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   font-size: 13px;
-  color: #5b687d;
+  color: #566176;
   flex: none;
+}
+.ticker-item-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #a5afd0;
+}
+.ticker-pause-hint {
+  flex: none;
+  color: #9aa4b6;
+  font-size: 10px;
 }
 @keyframes ticker-scroll {
   from {
     transform: translateX(0);
   }
   to {
-    transform: translateX(-50%);
+    transform: translateX(-100%);
   }
 }
 .icon-button {
@@ -2573,21 +2808,360 @@ html.dark .command-item-hint {
 html.dark .command-empty {
   color: #8390a3;
 }
-.common-toggle {
+.category-picker {
+  margin: 16px 0 13px;
+}
+.category-picker > .field-label {
+  display: block;
+  margin-bottom: 7px;
+}
+.category-picker-trigger {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 50px;
+  padding: 8px 10px;
+  border: 1px solid #dbe2ee;
+  border-radius: 12px;
+  background: #fff;
+  color: #344054;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+.category-picker-trigger:hover,
+.category-picker-trigger.open {
+  border-color: #9daaf1;
+  background: #fafbff;
+  box-shadow: 0 0 0 3px rgba(100, 98, 230, 0.1);
+}
+.category-path-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #fff;
+  color: #5d6fe8;
+  box-shadow: 0 2px 8px rgba(50, 67, 112, 0.1);
+}
+.category-path-text {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: #344054;
+}
+.category-path-text strong,
+.category-path-parent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.category-path-parent {
+  display: inline-flex;
+  align-items: center;
   gap: 3px;
+  color: #7a8699;
+  font-weight: 500;
+}
+.category-level-pill {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(93, 111, 232, 0.1);
+  color: #5365d8;
+  font-size: 11px;
+  font-weight: 700;
+}
+.category-picker-placeholder {
+  flex: 1;
+  color: #98a2b3;
+}
+.category-trigger-chevron {
+  flex: none;
+  color: #8691a4;
+  transition: transform 0.18s ease;
+}
+.category-picker-trigger.open .category-trigger-chevron {
+  transform: rotate(180deg);
+}
+.category-tree {
+  margin-top: 8px;
+  border: 1px solid #dfe5ef;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 14px 36px rgba(30, 43, 74, 0.12);
+  overflow: hidden;
+}
+.category-tree-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  border-bottom: 1px solid #edf0f5;
+  background: #f8f9fc;
+}
+.category-tree-head > div {
+  display: grid;
+  gap: 2px;
+}
+.category-tree-head strong {
+  color: #344054;
+  font-size: 12px;
+}
+.category-tree-head span {
+  color: #8b96a8;
+  font-size: 10px;
+}
+.category-tree-head > span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eceffd;
+  color: #6672d9;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.category-tree-groups {
+  max-height: 300px;
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.category-tree-group + .category-tree-group {
+  margin-top: 3px;
+}
+.category-parent-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.category-tree-option {
+  border: 0;
+  background: transparent;
+  color: #344054;
+  cursor: pointer;
+  text-align: left;
+}
+.category-parent-option {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 7px 9px;
+  border-radius: 9px;
+}
+.category-parent-option:hover,
+.category-tree-group.active .category-parent-option {
+  background: #f1f3ff;
+}
+.category-option-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #f0f2fb;
+  color: #6470db;
+  font-size: 16px;
+}
+.category-option-icon.small {
+  flex-basis: 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 14px;
+}
+.category-option-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+.category-option-copy strong {
+  overflow: hidden;
+  color: inherit;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.category-option-copy small {
+  color: #919bad;
+  font-size: 10px;
+}
+.category-option-check {
+  flex: none;
+  color: #5967dc;
+}
+.category-expand-button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  width: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #8d98aa;
   cursor: pointer;
 }
-.common-toggle input {
+.category-expand-button:hover {
+  background: #f2f4f8;
+  color: #5967dc;
+}
+.category-expand-button svg {
+  transition: transform 0.18s ease;
+}
+.category-expand-button.expanded svg {
+  transform: rotate(180deg);
+}
+.category-child-list {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  margin: 1px 0 4px 23px;
+  padding-left: 15px;
+}
+.category-child-list::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 9px;
+  left: 0;
+  width: 1px;
+  background: #dfe4f0;
+}
+.category-child-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 39px;
+  padding: 5px 9px;
+  border-radius: 8px;
+}
+.category-child-option:hover,
+.category-child-option.active {
+  background: #f4f5ff;
+  color: #505fd1;
+}
+.category-child-branch {
+  position: absolute;
+  top: 50%;
+  left: -15px;
+  width: 12px;
+  height: 1px;
+  background: #dfe4f0;
+}
+.category-tree-enter-active,
+.category-tree-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+  transform-origin: top;
+}
+.category-tree-enter-from,
+.category-tree-leave-to {
+  opacity: 0;
+  transform: translateY(-5px) scaleY(0.98);
+}
+.category-picker-help {
+  margin: 7px 2px 0;
+  color: #7f8a9d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.common-feature-toggle {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  margin: 4px 0 15px;
+  padding: 11px 12px;
+  border: 1px solid #e0e5ee;
+  border-radius: 13px;
+  background: #fafbfc;
+  color: #465166;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.common-feature-toggle:hover {
+  border-color: #bbc4e9;
+  background: #f8f9ff;
+}
+.common-feature-toggle.active {
+  border-color: #a9b4ef;
+  background: linear-gradient(110deg, #f4f5ff, #f9f8ff);
+  box-shadow: 0 5px 16px rgba(87, 91, 198, 0.09);
+}
+.common-feature-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #eceff5;
+  color: #7b8799;
+}
+.common-feature-toggle.active .common-feature-icon {
+  background: #fff1c8;
+  color: #d59618;
+}
+.common-feature-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 3px;
+}
+.common-feature-copy strong {
+  color: #3d485c;
+  font-size: 13px;
+}
+.common-feature-copy small {
+  color: #8a95a8;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.switch-track {
+  position: relative;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: #c8ced8;
+  transition: background 0.18s ease;
+}
+.switch-track span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
   width: 16px;
   height: 16px;
-  accent-color: #6a5cff;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 5px rgba(31, 42, 60, 0.22);
+  transition: transform 0.18s ease;
 }
-.common-toggle em {
-  font-style: normal;
-  font-size: 12px;
-  color: #8a95a8;
+.common-feature-toggle.active .switch-track {
+  background: #6569dd;
+}
+.common-feature-toggle.active .switch-track span {
+  transform: translateX(16px);
 }
 .emoji-icon {
   display: inline-flex;
@@ -3161,11 +3735,23 @@ html.dark .weather-widget:hover {
   color: #c9d8ff;
 }
 html.dark .ticker-bar {
-  background: #181e26;
-  border-color: rgba(172, 194, 230, 0.14);
+  background: linear-gradient(110deg, #1c2330, #1a2029 58%, #1a242b);
+  border-color: rgba(172, 194, 230, 0.16);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.12);
 }
-html.dark .ticker-item {
+html.dark .ticker-item,
+html.dark .ticker-single {
   color: #9ba7b7;
+}
+html.dark .ticker-label {
+  background: rgba(126, 136, 255, 0.14);
+  color: #b8c1ff;
+}
+html.dark .ticker-viewport::before {
+  background: linear-gradient(90deg, #1b222d, transparent);
+}
+html.dark .ticker-viewport::after {
+  background: linear-gradient(270deg, #1b232c, transparent);
 }
 html.dark .search-box {
   background: #181e26;
@@ -3263,6 +3849,86 @@ html.dark .modal select {
   border-color: #414a57;
   color: #dbe1e8;
 }
+html.dark .category-picker-trigger {
+  border-color: #3a4656;
+  background: #171d25;
+  color: #e4e9f1;
+}
+html.dark .category-picker-trigger:hover,
+html.dark .category-picker-trigger.open {
+  border-color: #6674c9;
+  background: #1c2430;
+}
+html.dark .category-path-icon {
+  color: #aebaff;
+  background: #2a3441;
+  box-shadow: none;
+}
+html.dark .category-path-text {
+  color: #e4e9f1;
+}
+html.dark .category-path-parent,
+html.dark .category-picker-help {
+  color: #91a0b5;
+}
+html.dark .category-level-pill {
+  color: #bcc6ff;
+  background: rgba(145, 158, 255, 0.16);
+}
+html.dark .category-tree {
+  border-color: #384353;
+  background: #1c232d;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+}
+html.dark .category-tree-head {
+  border-color: #323c49;
+  background: #202833;
+}
+html.dark .category-tree-head strong,
+html.dark .category-tree-option,
+html.dark .category-option-copy strong {
+  color: #e4e9f1;
+}
+html.dark .category-tree-head > span {
+  background: rgba(126, 136, 255, 0.15);
+  color: #bdc5ff;
+}
+html.dark .category-parent-option:hover,
+html.dark .category-tree-group.active .category-parent-option,
+html.dark .category-child-option:hover,
+html.dark .category-child-option.active {
+  background: rgba(119, 128, 238, 0.13);
+}
+html.dark .category-option-icon {
+  background: #293342;
+  color: #b7c0ff;
+}
+html.dark .category-expand-button:hover {
+  background: #29313d;
+}
+html.dark .category-child-list::before,
+html.dark .category-child-branch {
+  background: #3a4555;
+}
+html.dark .common-feature-toggle {
+  border-color: #394452;
+  background: #1c232c;
+  color: #dce2eb;
+}
+html.dark .common-feature-toggle:hover,
+html.dark .common-feature-toggle.active {
+  border-color: #5966ad;
+  background: #222a38;
+}
+html.dark .common-feature-icon {
+  background: #2b3542;
+}
+html.dark .common-feature-toggle.active .common-feature-icon {
+  background: rgba(226, 167, 44, 0.16);
+}
+html.dark .common-feature-copy strong {
+  color: #e4e9f1;
+}
 html.dark .brand,
 html.dark .sidebar-footer {
   border-color: #343d49;
@@ -3294,6 +3960,9 @@ html.dark .secondary-button {
   }
   .header {
     padding: 0 12px;
+  }
+  .ticker-bar {
+    margin: 8px 10px 0;
   }
   .search-switch {
     display: none;
@@ -3337,6 +4006,31 @@ html.dark .secondary-button {
 
 /* 手机端固定双列卡片，左右并排展示 */
 @media (max-width: 640px) {
+  .ticker-bar {
+    height: 38px;
+    gap: 9px;
+    padding: 0 9px;
+    border-radius: 11px;
+  }
+  .ticker-label {
+    padding: 5px 7px;
+  }
+  .ticker-label > span:last-child,
+  .ticker-pause-hint {
+    display: none;
+  }
+  .category-tree-groups {
+    max-height: 250px;
+  }
+  .category-level-pill {
+    display: none;
+  }
+  .common-feature-toggle {
+    align-items: flex-start;
+  }
+  .switch-track {
+    margin-top: 6px;
+  }
   .content {
     padding: 16px 12px 60px;
   }

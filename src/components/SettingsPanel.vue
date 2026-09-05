@@ -54,6 +54,7 @@ import {
   PenTool,
   PieChart,
   Plane,
+  Plus,
   RefreshCw,
   Rocket,
   Save,
@@ -131,6 +132,7 @@ const tickerCustomText = computed<string>({
       .filter(Boolean)
   },
 })
+const tickerCustomCount = computed(() => draft.ticker.customItems?.length || 0)
 const saving = ref(false)
 const testingAI = ref(false)
 const aiMessage = ref('')
@@ -1161,8 +1163,13 @@ function formatSize(bytes: number) {
                 </button>
               </div>
             </div>
-            <button type="button" class="secondary-button" @click="addSearchSource">
-              <Plus :size="15" />添加搜索引擎
+            <button type="button" class="add-search-source" @click="addSearchSource">
+              <span class="add-search-source-icon"><Plus :size="18" /></span>
+              <span class="add-search-source-copy">
+                <strong>添加搜索引擎</strong>
+                <small>配置名称与包含 {query} 的搜索地址</small>
+              </span>
+              <span class="add-search-source-action">添加</span>
             </button>
             <p v-if="!draft.search.externalSources.length" class="settings-help">
               尚未添加外部搜索引擎。添加后即可在搜索框右侧切换使用。
@@ -1330,15 +1337,27 @@ function formatSize(bytes: number) {
                   autocomplete="off"
               /></label>
             </template>
-            <template v-else>
-              <label
-                >自定义内容（每行一条）<textarea
-                  v-model="tickerCustomText"
-                  rows="5"
-                  placeholder="每条信息占一行"
-                ></textarea>
-              </label>
-            </template>
+            <div v-else-if="draft.ticker.source === 'custom'" class="ticker-editor">
+              <div class="ticker-editor-head">
+                <span>
+                  <strong>自定义消息</strong>
+                  <small>每行一条，保存后会自动依次播报</small>
+                </span>
+                <span class="ticker-message-count">{{ tickerCustomCount }} 条</span>
+              </div>
+              <textarea
+                v-model="tickerCustomText"
+                rows="6"
+                aria-label="自定义滚动消息，每行一条"
+                placeholder="例如：欢迎来到我的导航站&#10;今天也要保持好奇"
+              ></textarea>
+              <div class="ticker-editor-foot">
+                <span><Sparkles :size="13" /> 换行会自动拆分为独立消息</span>
+                <button v-if="tickerCustomCount" type="button" @click="tickerCustomText = ''">
+                  清空内容
+                </button>
+              </div>
+            </div>
           </section>
 
           <section
@@ -1970,6 +1989,133 @@ html.dark .search-source-row {
   background: rgba(34, 41, 51, 0.6);
   border-color: #343d49;
 }
+.add-search-source {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 12px;
+  border: 1px dashed var(--c-border-strong);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--c-bg-soft) 72%, transparent);
+  color: var(--c-text);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    transform 0.18s ease;
+}
+.add-search-source:hover {
+  border-color: var(--c-primary);
+  background: var(--c-nav-active);
+  transform: translateY(-1px);
+}
+.add-search-source-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--c-nav-active);
+  color: var(--c-primary);
+}
+.add-search-source-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 3px;
+}
+.add-search-source-copy strong {
+  font-size: 13px;
+}
+.add-search-source-copy small {
+  color: var(--c-muted);
+  font-size: 11px;
+}
+.add-search-source-action {
+  flex: none;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--c-primary);
+  color: var(--c-primary-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+.ticker-editor {
+  margin-top: 15px;
+  padding: 14px;
+  border: 1px solid var(--c-border);
+  border-radius: 13px;
+  background: var(--c-bg-soft);
+}
+.ticker-editor-head,
+.ticker-editor-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ticker-editor-head > span:first-child {
+  display: grid;
+  gap: 3px;
+}
+.ticker-editor-head strong {
+  color: var(--c-text);
+  font-size: 13px;
+}
+.ticker-editor-head small {
+  color: var(--c-muted);
+  font-size: 11px;
+}
+.ticker-message-count {
+  flex: none;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--c-nav-active);
+  color: var(--c-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+.ticker-editor textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 132px;
+  margin: 11px 0 8px;
+  padding: 11px 12px;
+  resize: vertical;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 10px;
+  outline: 0;
+  background: var(--c-input-bg);
+  color: var(--c-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.ticker-editor textarea:focus {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px rgba(89, 124, 226, 0.16);
+}
+.ticker-editor-foot {
+  color: var(--c-faint);
+  font-size: 10px;
+}
+.ticker-editor-foot > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ticker-editor-foot button {
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--c-primary);
+  cursor: pointer;
+  font-size: 11px;
+}
 .settings-inline {
   display: flex;
   align-items: center;
@@ -2476,6 +2622,13 @@ html.dark .settings-footer .settings-secondary:hover {
   .settings-grid {
     grid-template-columns: 1fr;
     gap: 10px;
+  }
+  .add-search-source {
+    min-height: 66px;
+  }
+  .ticker-editor-head,
+  .ticker-editor-foot {
+    align-items: flex-start;
   }
   .settings-section input:not([type='checkbox']),
   .settings-section select {
