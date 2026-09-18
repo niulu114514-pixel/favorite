@@ -868,10 +868,11 @@ async function enrichWebsite(force = false) {
     }
 
     aiBusy.value = true
-    const tasks: Promise<unknown>[] = [generateLinkDescription(title, requestedUrl)]
+    const aiOptions = { token: nav.token.value }
+    const tasks: Promise<unknown>[] = [generateLinkDescription(title, requestedUrl, aiOptions)]
     const canSuggestCategory = !editingLink.value.id
     if (canSuggestCategory) {
-      tasks.push(suggestCategory(title, requestedUrl, nav.categories.value))
+      tasks.push(suggestCategory(title, requestedUrl, nav.categories.value, aiOptions))
     }
     const results = await Promise.allSettled(tasks)
     if (controller.signal.aborted || normalizeWebsiteUrl(editingLink.value.url) !== requestedUrl)
@@ -938,8 +939,12 @@ async function generateWithAI() {
   aiError.value = ''
   try {
     const [description, categoryId] = await Promise.all([
-      generateLinkDescription(editingLink.value.title, editingLink.value.url),
-      suggestCategory(editingLink.value.title, editingLink.value.url, nav.categories.value),
+      generateLinkDescription(editingLink.value.title, editingLink.value.url, {
+        token: nav.token.value,
+      }),
+      suggestCategory(editingLink.value.title, editingLink.value.url, nav.categories.value, {
+        token: nav.token.value,
+      }),
     ])
     if (description) editingLink.value.description = description
     if (categoryId) editingLink.value.categoryId = categoryId

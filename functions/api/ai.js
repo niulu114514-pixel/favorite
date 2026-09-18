@@ -22,10 +22,19 @@ function providerConfig(config) {
     ? config.provider
     : 'google'
   const selected = config.providers?.[provider] || {}
-  return { ...config, ...selected, provider }
+  // 旧版本把每个提供商保存在 providers 中，当前设置页使用顶层字段。
+  // 顶层非空值必须优先，否则用户更新 Key 后仍会被历史 Key 覆盖并持续返回 403。
+  return {
+    ...selected,
+    ...config,
+    provider,
+    apiKey: config.apiKey || selected.apiKey || '',
+    baseUrl: config.baseUrl || selected.baseUrl || '',
+    model: config.model || selected.model || '',
+  }
 }
 
-function endpointFor(config) {
+export function endpointFor(config) {
   const provider = config.provider
   const fallback =
     provider === 'google'
@@ -37,10 +46,76 @@ function endpointFor(config) {
   const base = parsed.toString().replace(/\/$/, '')
   if (provider === 'google') {
     const model = encodeURIComponent(config.model || 'gemini-2.0-flash')
-    return `${base}/v1beta/models/${model}:generateContent`
+    if (/:generateContent$/i.test(base)) return base
+    if (/\/v1(?:beta)?\/models\/[^/]+$/i.test(base)) return `${base}:generateContent`
+    const root = base.replace(/\/v1(?:beta)?$/i, '')
+    return `${root}/v1beta/models/${model}:generateContent`
   }
-  if (provider === 'claude') return base.endsWith('/v1/messages') ? base : `${base}/v1/messages`
+  if (provider === 'claude') {
+    if (/\/v1\/messages$/i.test(base)) return base
+    return /\/v1$/i.test(base) ? `${base}/messages` : `${base}/v1/messages`
+  }
   return base.endsWith('/chat/completions') ? base : `${base}/chat/completions`
+}
+
+function providerLabel(provider) {
+  if (provider === 'google') return 'Google Gemini'
+  if (provider === 'claude') return 'Claude'
+  return 'OpenAI 兼容服务'
+}
+
+function redactUpstreamMessage(value, apiKey) {
+  let text = String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (apiKey) text = text.split(String(apiKey)).join('[已隐藏]')
+  return text
+    .replace(/\bAIza[\w-]{20,}\b/g, '[已隐藏]')
+    .replace(/\bsk-[\w-]{12,}\b/gi, '[已隐藏]')
+    .replace(/Bearer\s+[\w._~+/-]{12,}/gi, 'Bearer [已隐藏]')
+    .slice(0, 360)
+}
+
+async function readUpstreamError(response, apiKey) {
+  const raw = await response.text().catch(() => '')
+  let payload
+  try {
+    payload = raw ? JSON.parse(raw) : null
+  } catch {
+    payload = null
+  }
+  const details = Array.isArray(payload?.error?.details) ? payload.error.details : []
+  const reason = details.map(item => item?.reason || item?.metadata?.reason).find(Boolean)
+  const message =
+    payload?.error?.message ||
+    payload?.message ||
+    payload?.error_description ||
+    raw ||
+    response.statusText
+  return {
+    reason: redactUpstreamMessage(reason, apiKey),
+    message: redactUpstreamMessage(message, apiKey),
+  }
+}
+
+function upstreamErrorMessage(provider, status, detail) {
+  const label = providerLabel(provider)
+  const suffix = [detail.reason, detail.message].filter(Boolean).join('：')
+  if (provider === 'google' && status === 403) {
+    const locationBlocked = /location|region|country|territor/i.test(suffix)
+    const hint = locationBlocked
+      ? '当前 EdgeOne 节点所在地区可能不支持 Gemini，请改用可用地区的代理，或切换到 OpenAI 兼容服务。'
+      : '请在 Google AI Studio 新建 Authorization Key，并确认该 Key 已启用 Gemini API；旧版标准 Key 或受限 Key 可能被拒绝。'
+    return `${label} 拒绝请求（403）${suffix ? `：${suffix}` : ''}。${hint}`
+  }
+  if (status === 401 || status === 403) {
+    return `${label} 鉴权失败（${status}）${suffix ? `：${suffix}` : ''}。请检查 API Key 和 Base URL。`
+  }
+  if (status === 429) {
+    return `${label} 请求过于频繁或额度不足（429）${suffix ? `：${suffix}` : ''}`
+  }
+  return `${label} 请求失败（${status}）${suffix ? `：${suffix}` : ''}`
 }
 
 async function complete(config, system, prompt) {
@@ -85,15 +160,21 @@ async function complete(config, system, prompt) {
       body: JSON.stringify(body),
       signal: controller.signal,
     })
-    if (!response.ok) throw new Error(`AI 服务请求失败（${response.status}）`)
-    const data = await response.json()
+    if (!response.ok) {
+      const detail = await readUpstreamError(response, active.apiKey)
+      throw new Error(upstreamErrorMessage(active.provider, response.status, detail))
+    }
+    const data = await response.json().catch(() => null)
+    if (!data) throw new Error(`${providerLabel(active.provider)} 返回了无法解析的响应`)
     const text =
       active.provider === 'google'
         ? data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('')
         : active.provider === 'claude'
           ? data.content?.map(part => part.text || '').join('')
           : data.choices?.[0]?.message?.content
-    return String(text || '').trim()
+    const result = String(text || '').trim()
+    if (!result) throw new Error(`${providerLabel(active.provider)} 没有返回有效内容`)
+    return result
   } finally {
     clearTimeout(timer)
   }

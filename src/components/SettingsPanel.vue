@@ -81,6 +81,7 @@ import {
 import type { Component } from 'vue'
 import type {
   AIConfig,
+  AIProvider,
   BackgroundConfig,
   Category,
   IconConfig,
@@ -137,6 +138,7 @@ const tickerCustomCount = computed(() => draft.ticker.customItems?.length || 0)
 const saving = ref(false)
 const testingAI = ref(false)
 const aiMessage = ref('')
+const aiTestFailed = ref(false)
 const webdavMessage = ref('')
 const webdavBusy = ref(false)
 const saveError = ref('')
@@ -162,6 +164,23 @@ const settingsTabs = [
 const activeSettingsTab = computed(
   () => settingsTabs.find(tab => tab.id === activeSection.value) || settingsTabs[0]
 )
+const aiProviderDefaults: Record<AIProvider, Pick<AIConfig, 'baseUrl' | 'model'>> = {
+  google: {
+    baseUrl: 'https://generativelanguage.googleapis.com',
+    model: 'gemini-2.0-flash',
+  },
+  openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  claude: { baseUrl: 'https://api.anthropic.com', model: 'claude-3-5-sonnet-latest' },
+  custom: { baseUrl: '', model: '' },
+}
+const aiProviderHint = computed(() => {
+  if (draft.ai.provider === 'google') {
+    return 'Gemini 403 通常表示旧版标准 Key、受限 Key 或运行地区被拒绝，请改用 Google AI Studio 新建的 Authorization Key。'
+  }
+  if (draft.ai.provider === 'claude')
+    return '支持填写 https://api.anthropic.com 或完整的 /v1/messages 地址。'
+  return '兼容 OpenAI Chat Completions 协议，可填写官方地址或第三方代理地址。'
+})
 const mcpEndpoint = `${window.location.origin}/api/mcp`
 const mcpTools = [
   'list_links · search_links · list_categories · get_stats · get_category',
@@ -228,6 +247,7 @@ watch(
     if (!open) return
     Object.assign(draft, createDraft(props.config))
     aiMessage.value = ''
+    aiTestFailed.value = false
     saveError.value = ''
     webdavMessage.value = ''
     backups.value = []
@@ -238,6 +258,23 @@ watch(
     bgPreviewUrl.value = ''
     mcpToken.value = ''
     mcpTokenMessage.value = ''
+  }
+)
+
+watch(
+  () => draft.ai.provider,
+  (provider, previousProvider) => {
+    if (!previousProvider || provider === previousProvider) return
+    const previous = aiProviderDefaults[previousProvider]
+    const next = aiProviderDefaults[provider]
+    if (!draft.ai.baseUrl.trim() || draft.ai.baseUrl.trim() === previous.baseUrl) {
+      draft.ai.baseUrl = next.baseUrl
+    }
+    if (!draft.ai.model.trim() || draft.ai.model.trim() === previous.model) {
+      draft.ai.model = next.model
+    }
+    aiMessage.value = ''
+    aiTestFailed.value = false
   }
 )
 
@@ -747,10 +784,13 @@ function rebuildOrder(parentId: string | null, reorderedLevelIds: string[]): str
 async function testAI() {
   testingAI.value = true
   aiMessage.value = ''
+  aiTestFailed.value = false
   try {
     aiMessage.value =
-      (await testAIConfig('GitHub', 'https://github.com', draft.ai)) || 'AI 没有返回内容'
+      (await testAIConfig('GitHub', 'https://github.com', draft.ai, { token: props.token })) ||
+      'AI 没有返回内容'
   } catch (error) {
+    aiTestFailed.value = true
     aiMessage.value = error instanceof Error ? error.message : 'AI 测试失败'
   } finally {
     testingAI.value = false
@@ -1508,11 +1548,15 @@ function formatSize(bytes: number) {
               <label
                 >提供商<select v-model="draft.ai.provider">
                   <option value="google">Google Gemini</option>
-                  <option value="openai">OpenAI 兼容 API</option>
+                  <option value="openai">OpenAI / 兼容 API</option>
                   <option value="claude">Claude</option>
                 </select></label
               >
-              <label>模型<input v-model="draft.ai.model" placeholder="gemini-2.0-flash" /></label>
+              <label
+                >模型<input
+                  v-model="draft.ai.model"
+                  :placeholder="aiProviderDefaults[draft.ai.provider].model"
+              /></label>
             </div>
             <label
               >API Key<input
@@ -1522,12 +1566,26 @@ function formatSize(bytes: number) {
                 placeholder="留空保留服务端已保存的密钥"
             /></label>
             <label
-              >Base URL<input v-model="draft.ai.baseUrl" placeholder="https://api.openai.com/v1"
+              >Base URL<input
+                v-model="draft.ai.baseUrl"
+                :placeholder="aiProviderDefaults[draft.ai.provider].baseUrl"
             /></label>
+            <p class="settings-help ai-provider-hint">
+              {{ aiProviderHint }}
+              <a
+                v-if="draft.ai.provider === 'google'"
+                href="https://aistudio.google.com/api-keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                >前往 Google AI Studio</a
+              >
+            </p>
             <div class="settings-inline">
               <button class="settings-secondary" :disabled="testingAI" @click="testAI">
                 <Sparkles :size="15" />{{ testingAI ? '测试中…' : '测试 AI 配置' }}</button
-              ><span v-if="aiMessage" class="settings-result">{{ aiMessage }}</span>
+              ><span v-if="aiMessage" class="settings-result" :class="{ error: aiTestFailed }">{{
+                aiMessage
+              }}</span>
             </div>
           </section>
 
@@ -1973,6 +2031,23 @@ html.dark .settings-backdrop {
   line-height: 1.55;
   margin: 0 0 13px;
   max-width: 680px;
+}
+.ai-provider-hint {
+  margin-top: -4px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  background: var(--c-surface);
+}
+.ai-provider-hint a {
+  display: inline-flex;
+  margin-left: 4px;
+  color: var(--c-primary);
+  font-weight: 700;
+  text-decoration: none;
+}
+.ai-provider-hint a:hover {
+  text-decoration: underline;
 }
 .settings-section label {
   display: block;
