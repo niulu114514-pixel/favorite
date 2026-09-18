@@ -214,13 +214,16 @@ def main():
         logger.error("ACCOUNTS 为空，请先在脚本顶部填写账号")
         return
     signer = HuluxiaSignin()
-    for phone, password in ACCOUNTS.items():
+    accounts = list(ACCOUNTS.items())
+    for index, (phone, password) in enumerate(accounts):
         try:
             signer.huluxia_signin(phone, password)
             logger.info(f"账号 {phone} 签到成功")
         except Exception as e:
             logger.error(f"账号 {phone} 签到失败: {e}")
-        time.sleep(60)  # 两个账号之间间隔 60 秒
+        # 仅在“两个账号之间”等待 60 秒，最后一个账号结束后无需空等
+        if index < len(accounts) - 1:
+            time.sleep(60)
 
 
 if __name__ == "__main__":
