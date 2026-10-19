@@ -62,10 +62,28 @@ export function initialIconUrl(link: LinkItem): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 }
 
+/** 站内图标代理地址：统一走 /api/favicon，由服务端做抓取与多源兜底。 */
+function domainProxyUrl(link: LinkItem): string {
+  try {
+    const host = new URL(/^https?:\/\//i.test(link.url) ? link.url : `https://${link.url}`).hostname
+    return `/api/favicon?domain=${encodeURIComponent(host)}`
+  } catch {
+    return '/favicon.ico'
+  }
+}
+
 export function handleFaviconError(event: Event, link: LinkItem) {
   const image = event.target as HTMLImageElement
-  // /api/favicon 已在服务端试过站点自身图标、Google S2 与 faviconextractor，
-  // 前端再发一次外部请求既慢又容易同样失败，这里直接落到本地首字母图标。
+  const current = image.getAttribute('src') || ''
+
+  // 部分链接的 icon 字段存的是第三方外链，失效后不会自动恢复。
+  // 先回退到站内代理（服务端会试站点自身图标、Google S2 与 faviconextractor），
+  // 代理也失败时才用本地首字母图标。
+  if (!current.startsWith('/api/favicon')) {
+    image.src = domainProxyUrl(link)
+    return
+  }
+
   image.src = initialIconUrl(link)
   image.style.background = 'transparent'
 }
