@@ -48,12 +48,35 @@ export function useRandomBackground() {
     return portrait || narrow ? 'sp' : 'hp'
   }
 
+  /**
+   * LoliApi 的 /acg/ 靠 User-Agent 自适应，判断的是设备类型而不是视口方向：
+   * iPad 横屏、桌面窄窗口都会拿到横图。这里按视口方向显式选 /acg/pc/ 或 /acg/pe/，
+   * 与镜花水商保持同一套行为。其它路径（/bg/、/pp/）没有横竖屏变体，原样保留。
+   */
+  function applyLoliOrientation(rawUrl: string) {
+    if (typeof window === 'undefined') return rawUrl
+    let parsed: URL
+    try {
+      parsed = new URL(rawUrl)
+    } catch {
+      return rawUrl
+    }
+    if (!/\/acg\/(?:pc|pe)?\/?$/i.test(parsed.pathname)) return rawUrl
+    const portrait = window.matchMedia('(orientation: portrait)').matches
+    const narrow = window.innerWidth <= 768
+    parsed.pathname = portrait || narrow ? '/acg/pe/' : '/acg/pc/'
+    return parsed.toString()
+  }
+
   /** 依据来源构造成最终可加载的图片地址，并附带时间戳绕开缓存以取新图 */
   function buildSrc(cfg: BackgroundConfig, ts: number) {
     let url =
       cfg.source === 'custom' && cfg.customUrl?.trim() ? cfg.customUrl.trim() : cfg.apiUrl.trim()
-    if (cfg.source === 'loli' && validParam(cfg.id, /^\d{1,6}$/)) {
-      url += (url.includes('?') ? '&' : '?') + 'id=' + cfg.id
+    if (cfg.source === 'loli') {
+      url = applyLoliOrientation(url)
+      if (validParam(cfg.id, /^\d{1,6}$/)) {
+        url += (url.includes('?') ? '&' : '?') + 'id=' + cfg.id
+      }
     }
     if (cfg.source === 'jinghuashang') {
       const sort = resolveJinghuashangSort(cfg)

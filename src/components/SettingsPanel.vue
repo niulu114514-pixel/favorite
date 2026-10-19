@@ -300,13 +300,24 @@ function buildBgPreviewUrl() {
     draft.background.source !== 'custom' || !draft.background.customUrl?.trim()
       ? draft.background.apiUrl.trim()
       : draft.background.customUrl.trim()
-  if (
-    draft.background.source === 'loli' &&
-    draft.background.id &&
-    /^\d{1,6}$/.test(draft.background.id)
-  ) {
-    url += url.includes('?') ? '&' : '?'
-    url += 'id=' + draft.background.id
+  if (draft.background.source === 'loli') {
+    // 与运行时一致：/acg/ 系列按视口方向切到 /acg/pc/ 或 /acg/pe/
+    try {
+      const parsed = new URL(url)
+      if (/\/acg\/(?:pc|pe)?\/?$/i.test(parsed.pathname)) {
+        const portrait =
+          typeof window !== 'undefined' && window.matchMedia('(orientation: portrait)').matches
+        const narrow = typeof window !== 'undefined' && window.innerWidth <= 768
+        parsed.pathname = portrait || narrow ? '/acg/pe/' : '/acg/pc/'
+        url = parsed.toString()
+      }
+    } catch {
+      // 非法 URL 时保持原样，交给图片加载失败流程处理
+    }
+    if (draft.background.id && /^\d{1,6}$/.test(draft.background.id)) {
+      url += url.includes('?') ? '&' : '?'
+      url += 'id=' + draft.background.id
+    }
   }
   if (draft.background.source === 'jinghuashang') {
     // 与实际渲染保持一致：保持 random 时按当前屏幕方向取横/竖图。
