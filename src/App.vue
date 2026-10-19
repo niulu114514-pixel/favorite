@@ -2219,16 +2219,16 @@ html.dark .brand-splash {
 }
 /* ===== 启用背景时的半透明覆盖（精简 backdrop-filter 以保性能）===== */
 .app-shell.has-bg .header {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-bottom-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  border-bottom-color: rgba(255, 255, 255, 0.55);
 }
 .app-shell.has-bg .sidebar {
-  background: linear-gradient(165deg, rgba(255, 255, 255, 0.62), rgba(246, 249, 255, 0.42));
-  backdrop-filter: blur(20px) saturate(1.8);
-  -webkit-backdrop-filter: blur(20px) saturate(1.8);
-  border-right-color: rgba(255, 255, 255, 0.5);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(246, 249, 255, 0.9));
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border-right-color: rgba(255, 255, 255, 0.6);
 }
 .app-shell.has-bg .brand {
   border-bottom-color: rgba(255, 255, 255, 0.4);
@@ -2293,14 +2293,19 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   position: fixed;
   inset: 0 auto 0 0;
   width: 250px;
-  background: linear-gradient(165deg, rgba(255, 255, 255, 0.58) 0%, rgba(245, 248, 255, 0.4) 100%);
-  backdrop-filter: blur(18px) saturate(1.9);
-  -webkit-backdrop-filter: blur(18px) saturate(1.9);
-  border-right: 1px solid rgba(255, 255, 255, 0.72);
+  /* 框架材质：不透明度要压得住背后的彩色渐变，否则文字会浮在花色底上 */
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(250, 249, 255, 0.95) 42%,
+    rgba(245, 246, 253, 0.95) 100%
+  );
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  border-right: 1px solid rgba(226, 229, 243, 0.9);
   box-shadow:
-    2px 0 16px rgba(58, 78, 122, 0.05),
-    14px 0 44px rgba(48, 65, 104, 0.1),
-    inset -1px 0 rgba(255, 255, 255, 0.42);
+    1px 0 0 rgba(255, 255, 255, 0.8),
+    12px 0 36px rgba(58, 78, 122, 0.06);
   display: flex;
   flex-direction: column;
   z-index: 40;
@@ -2320,7 +2325,9 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   height: 210px;
   top: -60px;
   right: -70px;
+  /* 底色变实后光斑会变成孤立色块，压到很淡只保留一点呼吸 */
   background: rgba(134, 157, 255, 0.34);
+  opacity: 0.28;
 }
 .sidebar::after {
   width: 190px;
@@ -2328,6 +2335,7 @@ html.dark .app-shell.has-bg :deep(.card-actions) {
   bottom: 60px;
   left: -95px;
   background: rgba(210, 157, 255, 0.3);
+  opacity: 0.2;
 }
 .brand {
   height: 68px;
@@ -2661,8 +2669,13 @@ html.dark .flyout-item:hover {
   position: sticky;
   top: 0;
   z-index: 30;
-  background: rgba(255, 255, 255, 0.96);
-  border-bottom: 1px solid #e7eaf0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(253, 253, 255, 0.86));
+  backdrop-filter: blur(20px) saturate(1.35);
+  -webkit-backdrop-filter: blur(20px) saturate(1.35);
+  border-bottom: 1px solid rgba(228, 231, 240, 0.92);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 8px 20px rgba(48, 65, 104, 0.045);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -4445,9 +4458,9 @@ html.dark .app-shell {
     radial-gradient(760px 720px at 92% 110%, rgba(74, 132, 186, 0.34), transparent 56%);
 }
 html.dark .sidebar {
-  background: linear-gradient(165deg, rgba(38, 46, 60, 0.62) 0%, rgba(28, 35, 45, 0.46) 100%);
-  backdrop-filter: blur(18px) saturate(1.4);
-  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  background: linear-gradient(180deg, rgba(38, 46, 60, 0.92) 0%, rgba(30, 37, 48, 0.9) 100%);
+  backdrop-filter: blur(24px) saturate(1.25);
+  -webkit-backdrop-filter: blur(24px) saturate(1.25);
   border-color: rgba(172, 194, 230, 0.16);
   box-shadow:
     2px 0 16px rgba(0, 0, 0, 0.2),
@@ -4472,8 +4485,11 @@ html.dark .card-actions {
   border-color: #343d49;
 }
 html.dark .header {
-  background: rgba(34, 41, 51, 0.96);
+  background: linear-gradient(180deg, rgba(36, 43, 54, 0.95), rgba(32, 39, 49, 0.93));
+  backdrop-filter: blur(20px) saturate(1.25);
+  -webkit-backdrop-filter: blur(20px) saturate(1.25);
   border-color: rgba(172, 194, 230, 0.14);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
 }
 html.dark .weather-widget {
   background: #181e26;
