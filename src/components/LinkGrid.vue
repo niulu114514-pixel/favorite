@@ -11,7 +11,7 @@ import {
 } from 'lucide-vue-next'
 import type { LinkItem } from '../../types'
 import { favicon, handleFaviconError } from '../composables/useFavicon'
-import { safeTargetUrl } from '../utils/url'
+import { linkSubtitle, safeTargetUrl } from '../utils/url'
 
 const props = defineProps<{
   links: LinkItem[]
@@ -126,7 +126,7 @@ function dropOn(overIdValue: string) {
         />
         <div class="link-card-text">
           <strong>{{ link.title }}</strong>
-          <p v-if="!compact">{{ link.description || link.url }}</p>
+          <p v-if="!compact">{{ linkSubtitle(link) }}</p>
         </div>
       </a>
       <button

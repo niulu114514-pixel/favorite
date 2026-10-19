@@ -96,7 +96,7 @@ import { useTicker } from './composables/useTicker'
 import LinkGrid from './components/LinkGrid.vue'
 import { favicon, handleFaviconError } from './composables/useFavicon'
 import { isEmojiIcon } from './services/categoryIconUtil'
-import { safeTargetUrl } from './utils/url'
+import { linkSubtitle, safeTargetUrl } from './utils/url'
 import { generateLinkDescription, suggestCategory } from './services/aiService'
 import { fetchSiteMetadata } from './services/siteMetadataService'
 
@@ -1604,7 +1604,7 @@ onBeforeUnmount(() => {
                 />
                 <div>
                   <strong>{{ link.title }}</strong>
-                  <p v-if="!compact">{{ link.description || link.url }}</p>
+                  <p v-if="!compact">{{ linkSubtitle(link) }}</p>
                 </div>
                 <ArrowUpRight :size="16" class="pinned-open" />
               </a>

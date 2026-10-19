@@ -308,13 +308,19 @@ function buildBgPreviewUrl() {
     url += url.includes('?') ? '&' : '?'
     url += 'id=' + draft.background.id
   }
-  if (
-    draft.background.source === 'jinghuashang' &&
-    draft.background.sort &&
-    /^[a-zA-Z]{1,20}$/.test(draft.background.sort)
-  ) {
-    url += url.includes('?') ? '&' : '?'
-    url += 'sort=' + draft.background.sort
+  if (draft.background.source === 'jinghuashang') {
+    // 与实际渲染保持一致：保持 random 时按当前屏幕方向取横/竖图。
+    let sort = draft.background.sort || 'random'
+    if (sort === 'random') {
+      const portrait =
+        typeof window !== 'undefined' && window.matchMedia('(orientation: portrait)').matches
+      const narrow = typeof window !== 'undefined' && window.innerWidth <= 768
+      sort = portrait || narrow ? 'sp' : 'hp'
+    }
+    if (/^[a-zA-Z]{1,20}$/.test(sort)) {
+      url += url.includes('?') ? '&' : '?'
+      url += 'sort=' + sort
+    }
   }
   url += url.includes('?') ? '&' : '?'
   url += 't=' + Date.now()
@@ -1075,7 +1081,7 @@ function formatSize(bytes: number) {
                 <li>
                   <code>sort</code> — 图片集：<code>random</code>（全部）/ <code>hp</code>（横屏）/
                   <code>sp</code>（竖屏）/
-                  <code>huaming</code>（花铭老师，暂关闭）。不传默认随机全部。
+                  <code>huaming</code>（花铭老师，暂关闭）。选 <code>random</code> 时会按当前屏幕方向自动取横屏或竖屏图。
                 </li>
                 <li>
                   <code>type</code> — 输出方式：<code>text</code>（输出图片 URL）/

@@ -85,6 +85,19 @@ async function readUpstreamError(response, apiKey) {
   } catch {
     payload = null
   }
+
+  // 网关超时或地址配错时，上游返回的是整页 HTML（含内联 CSS），
+  // 直接透传会把一大段样式文本当成错误消息显示给用户。
+  const contentType = response.headers.get('content-type') || ''
+  const looksLikeHtml =
+    /html/i.test(contentType) || /^\s*<(?:!doctype|html|head|body|style|div)/i.test(raw)
+  if (looksLikeHtml) {
+    return {
+      reason: '',
+      message: `上游返回的是 HTML 页面而非 API 响应（HTTP ${response.status}），通常意味着网关超时、地址不可达，或该地址不是兼容 OpenAI 的接口`,
+    }
+  }
+
   const details = Array.isArray(payload?.error?.details) ? payload.error.details : []
   const reason = details.map(item => item?.reason || item?.metadata?.reason).find(Boolean)
   const message =
@@ -111,6 +124,9 @@ function upstreamErrorMessage(provider, status, detail) {
   }
   if (status === 401 || status === 403) {
     return `${label} 鉴权失败（${status}）${suffix ? `：${suffix}` : ''}。请检查 API Key 和 Base URL。`
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    return `${label} 网关异常（${status}）${suffix ? `：${suffix}` : ''}。多为上游响应超时或 Base URL 指向了非 API 站点，可稍后重试。`
   }
   if (status === 429) {
     return `${label} 请求过于频繁或额度不足（429）${suffix ? `：${suffix}` : ''}`

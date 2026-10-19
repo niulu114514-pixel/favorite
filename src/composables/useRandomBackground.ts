@@ -35,6 +35,19 @@ export function useRandomBackground() {
     return typeof value === 'string' && pattern.test(value)
   }
 
+  /**
+   * 镜花水商接口用 sort 区分图片集：hp = 横屏壁纸，sp = 竖屏壁纸。
+   * 用户在设置里显式选了具体值时尊重其选择；保持默认的 random 时，
+   * 按当前屏幕方向自动取图，避免手机竖屏加载到横图后被 cover 裁掉大半。
+   */
+  function resolveJinghuashangSort(cfg: BackgroundConfig) {
+    if (cfg.sort && cfg.sort !== 'random') return cfg.sort
+    if (typeof window === 'undefined') return 'hp'
+    const portrait = window.matchMedia('(orientation: portrait)').matches
+    const narrow = window.innerWidth <= 768
+    return portrait || narrow ? 'sp' : 'hp'
+  }
+
   /** 依据来源构造成最终可加载的图片地址，并附带时间戳绕开缓存以取新图 */
   function buildSrc(cfg: BackgroundConfig, ts: number) {
     let url =
@@ -42,8 +55,11 @@ export function useRandomBackground() {
     if (cfg.source === 'loli' && validParam(cfg.id, /^\d{1,6}$/)) {
       url += (url.includes('?') ? '&' : '?') + 'id=' + cfg.id
     }
-    if (cfg.source === 'jinghuashang' && validParam(cfg.sort, /^[a-zA-Z]{1,20}$/)) {
-      url += (url.includes('?') ? '&' : '?') + 'sort=' + cfg.sort
+    if (cfg.source === 'jinghuashang') {
+      const sort = resolveJinghuashangSort(cfg)
+      if (validParam(sort, /^[a-zA-Z]{1,20}$/)) {
+        url += (url.includes('?') ? '&' : '?') + 'sort=' + sort
+      }
     }
     url += (url.includes('?') ? '&' : '?') + 't=' + ts
     return url
