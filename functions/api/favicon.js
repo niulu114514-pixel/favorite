@@ -15,7 +15,7 @@ const UPSTREAM_PROVIDERS = [
   // 目标网站自身的经典 favicon（首选，保证拿到该网址自己的图标）
   domain => `https://${encodeURIComponent(domain)}/favicon.ico`,
   // Google S2，覆盖面广、响应快
-  domain => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`,
+  domain => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`,
   // faviconextractor 最后兜底
   domain => `https://www.faviconextractor.com/favicon/${encodeURIComponent(domain)}?larger=true`,
 ]
@@ -24,6 +24,43 @@ const UPSTREAM_TIMEOUT_MS = 10_000
 const MAX_FAVICON_BYTES = 512 * 1024
 const PAGE_TIMEOUT_MS = 6000
 const MAX_PAGE_BYTES = 512 * 1024
+
+/**
+ * 判断字节流是否真的是图片。
+ * 上游常见两种坑：站点对任意路径都返回 200 + 首页 HTML，
+ * 以及历史缓存里被写入过非图片内容。只看 Content-Type 拦不住这两种。
+ */
+export function looksLikeImage(buffer) {
+  if (!buffer || buffer.byteLength < 4) return false
+  const u = new Uint8Array(buffer)
+  if (u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4e && u[3] === 0x47) return true // PNG
+  if (u[0] === 0xff && u[1] === 0xd8) return true // JPEG
+  if (u[0] === 0x47 && u[1] === 0x49 && u[2] === 0x46) return true // GIF
+  if (u[0] === 0x00 && u[1] === 0x00 && u[2] === 0x01 && u[3] === 0x00) return true // ICO
+  if (u[0] === 0x42 && u[1] === 0x4d) return true // BMP
+  if (
+    u[0] === 0x52 && u[1] === 0x49 && u[2] === 0x46 && u[3] === 0x46 &&
+    u.byteLength >= 12 && u[8] === 0x57 && u[9] === 0x45 && u[10] === 0x42 && u[11] === 0x50
+  ) {
+    return true // WEBP
+  }
+  // AVIF / HEIF: 4 字节长度 + 'ftyp' + brand
+  if (
+    u.byteLength >= 12 &&
+    u[4] === 0x66 && u[5] === 0x74 && u[6] === 0x79 && u[7] === 0x70
+  ) {
+    const brand = String.fromCharCode(u[8], u[9], u[10], u[11])
+    if (/^(avif|avis|heic|heix|mif1|msf1)$/.test(brand)) return true
+  }
+  try {
+    const head = new TextDecoder('utf-8').decode(u.subarray(0, 200)).trim().toLowerCase()
+    if (head.startsWith('<svg')) return true
+    if (head.startsWith('<?xml') && head.includes('<svg')) return true
+  } catch {
+    // 落到 false
+  }
+  return false
+}
 
 // 抓取配额：该接口无需认证即可触发上游抓取并写入 Blob，
 // 不设限就等同于对外开放一个可以无限灌入存储的写入通道。
@@ -78,6 +115,9 @@ async function fetchUpstreamIcon(url) {
     if (declared > MAX_FAVICON_BYTES) return null
     const buffer = await res.arrayBuffer()
     if (buffer.byteLength === 0 || buffer.byteLength > MAX_FAVICON_BYTES) return null
+    // 站点对不存在的 /favicon.ico 返回 200 + 首页 HTML 的情况很常见，
+    // 必须以字节头确认是图片，否则会把整页 HTML 当图标缓存下来。
+    if (!looksLikeImage(buffer)) return null
     return buffer
   } catch {
     return null
@@ -187,6 +227,15 @@ function detectMimeType(arrayBuffer) {
   ) {
     return 'image/webp'
   }
+  // AVIF：不少新站点已改用这种格式，标错 MIME 会导致浏览器不渲染。
+  if (uint8.length >= 12 && uint8[4] === 0x66 && uint8[5] === 0x74 && uint8[6] === 0x79 && uint8[7] === 0x70) {
+    const brand = String.fromCharCode(uint8[8], uint8[9], uint8[10], uint8[11])
+    if (brand === 'avif' || brand === 'avis') return 'image/avif'
+    if (brand === 'heic' || brand === 'heix') return 'image/heic'
+  }
+  if (uint8.length >= 2 && uint8[0] === 0x42 && uint8[1] === 0x4d) {
+    return 'image/bmp'
+  }
 
   try {
     const decoder = new TextDecoder('utf-8')
@@ -267,12 +316,16 @@ export async function onRequest(context) {
 
     if (store) {
       const cached = await store.get(storageKey, { type: 'arrayBuffer' })
-      if (cached) {
+      if (cached && looksLikeImage(cached)) {
         const mime = detectMimeType(cached)
         return new Response(cached, {
           status: 200,
           headers: iconHeaders(mime, corsHeaders, 'public, max-age=31536000, immutable'),
         })
+      }
+      if (cached) {
+        // 历史遗留的非图片内容（早期写入漏洞或上游错误页），丢弃后重新抓取。
+        console.warn('Discarding non-image favicon cache entry:', storageKey)
       }
     } else {
       console.warn('Blob store not available for read (getStore is undefined)')

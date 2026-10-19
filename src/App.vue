@@ -97,7 +97,7 @@ import LinkGrid from './components/LinkGrid.vue'
 import { favicon, handleFaviconError } from './composables/useFavicon'
 import { isEmojiIcon } from './services/categoryIconUtil'
 import { linkSubtitle, safeTargetUrl } from './utils/url'
-import { generateLinkDescription, suggestCategory } from './services/aiService'
+import { generateLinkDescription } from './services/aiService'
 import { fetchSiteMetadata } from './services/siteMetadataService'
 
 const SettingsPanel = defineAsyncComponent(() => import('./components/SettingsPanel.vue'))
@@ -885,12 +885,10 @@ async function enrichWebsite(force = false, forceAi = false) {
     aiBusy.value = true
     metadataStatus.value = '名称和图标已识别，正在生成 AI 描述…'
     const aiOptions = { token: nav.token.value }
-    const tasks: Promise<unknown>[] = [generateLinkDescription(title, requestedUrl, aiOptions)]
-    const canSuggestCategory = !editingLink.value.id
-    if (canSuggestCategory) {
-      tasks.push(suggestCategory(title, requestedUrl, nav.categories.value, aiOptions))
-    }
-    const results = await Promise.allSettled(tasks)
+    // 分类交由用户自己选择：AI 只负责生成一句话描述。
+    const results = await Promise.allSettled([
+      generateLinkDescription(title, requestedUrl, aiOptions),
+    ])
     if (controller.signal.aborted || normalizeWebsiteUrl(editingLink.value.url) !== requestedUrl)
       return
 
@@ -903,11 +901,6 @@ async function enrichWebsite(force = false, forceAi = false) {
         editingLink.value.description = descriptionResult.value
         lastAutoDescription = descriptionResult.value
       }
-    }
-    const categoryResult = results[1]
-    if (categoryResult?.status === 'fulfilled' && typeof categoryResult.value === 'string') {
-      editingLink.value.categoryId = categoryResult.value
-      prepareCategoryPicker(categoryResult.value)
     }
     if (descriptionResult.status === 'rejected') {
       aiError.value =
@@ -955,16 +948,12 @@ async function generateWithAI() {
   aiBusy.value = true
   aiError.value = ''
   try {
-    const [description, categoryId] = await Promise.all([
-      generateLinkDescription(editingLink.value.title, editingLink.value.url, {
-        token: nav.token.value,
-      }),
-      suggestCategory(editingLink.value.title, editingLink.value.url, nav.categories.value, {
-        token: nav.token.value,
-      }),
-    ])
+    const description = await generateLinkDescription(
+      editingLink.value.title,
+      editingLink.value.url,
+      { token: nav.token.value }
+    )
     if (description) editingLink.value.description = description
-    if (categoryId) editingLink.value.categoryId = categoryId
   } catch (error) {
     aiError.value = error instanceof Error ? error.message : 'AI 请求失败'
   } finally {
@@ -1789,7 +1778,7 @@ onBeforeUnmount(() => {
         </label>
         <div class="ai-link-actions">
           <button type="button" class="secondary-button" :disabled="aiBusy" @click="generateWithAI">
-            <Sparkles :size="15" />{{ aiBusy ? 'AI 处理中…' : '重新生成 AI 描述并分类' }}
+            <Sparkles :size="15" />{{ aiBusy ? 'AI 处理中…' : '重新生成描述' }}
           </button>
           <span v-if="aiError" class="form-error">{{ aiError }}</span>
         </div>

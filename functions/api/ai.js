@@ -237,24 +237,8 @@ export async function onRequest(context) {
         '你是书签助手。只输出简体中文的一句话描述，不超过 30 个字。',
         `网站名称：${title}\n网址：${url}`
       )
-    } else if (body.action === 'categorize') {
-      const categories = Array.isArray(body.categories)
-        ? body.categories
-            .slice(0, 200)
-            .map(item => ({
-              id: String(item.id || '').slice(0, 80),
-              name: String(item.name || '').slice(0, 100),
-            }))
-            .filter(item => item.id && item.name)
-        : []
-      result = await complete(
-        config,
-        '你是分类助手。只输出最匹配的分类 id，不要输出其他文字。',
-        `网站：${title}（${url}）\n分类：${categories.map(item => `${item.id}: ${item.name}`).join('\n')}`
-      )
-      const exact = categories.find(item => item.id === result)
-      result = exact?.id || null
     } else {
+      // 分类由用户自行决定，AI 只负责生成描述。
       return jsonResponse({ error: 'Invalid action' }, 400, corsHeaders)
     }
     return jsonResponse({ result }, 200, { ...corsHeaders, 'Cache-Control': 'no-store' })

@@ -31,20 +31,3 @@ export function testAIConfig(
   return requestAI({ action: 'test', title, url, config }, options)
 }
 
-export async function suggestCategory(
-  title: string,
-  url: string,
-  categories: Category[],
-  options?: AIRequestOptions
-) {
-  const result = await requestAI(
-    {
-      action: 'categorize',
-      title,
-      url,
-      categories: categories.map(({ id, name }) => ({ id, name })),
-    },
-    options
-  )
-  return categories.some(item => item.id === result) ? result : null
-}
