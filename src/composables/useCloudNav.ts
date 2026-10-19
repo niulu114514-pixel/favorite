@@ -1,0 +1,570 @@
+import { computed, reactive, ref } from 'vue'
+import type { Category, LinkItem } from '../../types'
+import { DEFAULT_CATEGORIES, INITIAL_LINKS } from '../../types'
+import type {
+  AIConfig,
+  IconConfig,
+  SearchConfig,
+  TickerConfig,
+  WebDavConfig,
+  WeatherConfig,
+} from '../../types'
+import { DEFAULT_BACKGROUND_CONFIG } from '../../types'
+import type { BackgroundConfig } from '../../types'
+import { DEFAULT_ICON_CONFIG, getIconUrl } from '../services/iconService'
+import { splitCategoryIcon } from '../services/categoryIconUtil'
+
+const DATA_KEY = 'cloudnav_data_cache'
+const AUTH_KEY = 'cloudnav_auth_token'
+const REQUEST_TIMEOUT = 6500
+
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
+  try {
+    return await fetch(input, { credentials: 'include', ...init, signal: controller.signal })
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+export function useCloudNav() {
+  const links = ref<LinkItem[]>([])
+  const categories = ref<Category[]>([])
+  const token = ref(localStorage.getItem(AUTH_KEY) || '')
+  // 首次打开（无本地缓存）时保持 loading，用于展示整页品牌过渡；
+  // 再次打开时首帧即就绪，直接渲染真实内容，避免闪屏遮罩。
+  const hasLocalCache = Boolean(localStorage.getItem(DATA_KEY))
+  const loading = ref(!hasLocalCache)
+
+  function authHeaders(extra?: Record<string, string>) {
+    const headers: Record<string, string> = { ...extra }
+    if (token.value && token.value !== 'session') headers['x-auth-password'] = token.value
+    return headers
+  }
+  const syncStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const authRequired = ref(false)
+  // 后端在 bootstrap 中回传「服务端是否已存有可用的 AI Key」。
+  // 前端拿不到 key 本身（已脱敏），靠这个标记决定要不要发起 AI 请求。
+  const aiConfigured = ref(false)
+  let syncIdleTimer: number | undefined
+  const config = reactive({
+    title: '我的导航',
+    navigationName: '我的导航',
+    showPinned: true,
+    defaultViewMode: 'detailed' as 'compact' | 'detailed',
+    ai: {
+      provider: 'google' as AIConfig['provider'],
+      apiKey: '',
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      model: 'gemini-2.0-flash',
+      websiteTitle: '',
+      navigationName: '',
+      faviconUrl: '',
+    } as AIConfig,
+    icon: { ...DEFAULT_ICON_CONFIG } as IconConfig,
+    webdav: {
+      url: '',
+      username: '',
+      password: '',
+      enabled: false,
+    } as WebDavConfig,
+    background: { ...DEFAULT_BACKGROUND_CONFIG } as BackgroundConfig,
+    search: {
+      mode: 'internal' as SearchConfig['mode'],
+      externalSources: [],
+    } as SearchConfig,
+    weather: { enabled: false } as WeatherConfig,
+    ticker: { enabled: false } as TickerConfig,
+  })
+
+  function normalize(data: { links?: LinkItem[]; categories?: Category[] }) {
+    const nextCategories = data.categories?.length
+      ? data.categories.map(category => ({ ...category }))
+      : DEFAULT_CATEGORIES.map(category => ({ ...category }))
+    if (!nextCategories.some(item => item.id === 'common')) {
+      nextCategories.unshift({ id: 'common', name: '常用推荐', icon: 'Star' })
+    }
+    const byId = new Map(nextCategories.map(item => [item.id, item]))
+    for (const category of nextCategories) {
+      const parent = category.parentId ? byId.get(category.parentId) : undefined
+      if (
+        !category.parentId ||
+        category.parentId === category.id ||
+        !parent ||
+        // 只允许两级：父级本身必须是一级分类，避免把顶层误判为二级
+        parent.parentId
+      ) {
+        delete category.parentId
+        category.isSubcategory = false
+      } else {
+        category.isSubcategory = true
+      }
+    }
+    const validIds = new Set(nextCategories.map(item => item.id))
+    return {
+      categories: nextCategories,
+      links: (data.links?.length ? data.links : INITIAL_LINKS).map(link =>
+        validIds.has(link.categoryId) ? link : { ...link, categoryId: 'common' }
+      ),
+    }
+  }
+
+  function loadLocal() {
+    try {
+      const cached = localStorage.getItem(DATA_KEY)
+      return normalize(cached ? JSON.parse(cached) : {})
+    } catch {
+      return normalize({})
+    }
+  }
+
+  async function init() {
+    const local = loadLocal()
+    links.value = local.links
+    categories.value = local.categories
+    try {
+      const response = await fetchWithTimeout('/api/storage?bootstrap=true', {
+        headers: authHeaders(),
+      })
+      if (response.ok) {
+        const bootstrap = await response.json()
+        if (bootstrap.links?.length || bootstrap.categories?.length) {
+          const normalized = normalize(bootstrap)
+          links.value = normalized.links
+          categories.value = normalized.categories
+          saveLocal()
+        }
+        applyConfig(bootstrap.config || {})
+        aiConfigured.value = Boolean(bootstrap.aiConfigured)
+        if (bootstrap.auth?.authenticated) {
+          if (!token.value) token.value = 'session'
+        } else {
+          token.value = ''
+          localStorage.removeItem(AUTH_KEY)
+        }
+      }
+    } catch (error) {
+      console.info('Cloud data is unavailable; using the local cache.', error)
+    } finally {
+      loading.value = false
+      // 数据就绪后为 MCP 等未带图标、或历史遗留 emoji 图标的链接回填真实 favicon。
+      // 放到浏览器空闲时执行，避免与首屏渲染/用户首次交互抢占主线程。
+      scheduleIdleBackfill()
+    }
+  }
+
+  function scheduleIdleBackfill() {
+    const run = () => void backfillLinkIcons()
+    const requestIdle =
+      typeof window !== 'undefined' &&
+      (window as { requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => void })
+        .requestIdleCallback
+    if (requestIdle) {
+      requestIdle(run, { timeout: 3000 })
+    } else {
+      // 不支持 requestIdleCallback 时退化为宏任务，让位给本轮渲染。
+      setTimeout(run, 0)
+    }
+  }
+
+  function applyConfig(loaded: Record<string, unknown>) {
+    const ai = (loaded.ai || {}) as Partial<AIConfig>
+    const icon = (loaded.icon || {}) as Partial<IconConfig> & { source?: string }
+    const webdav = (loaded.webdav || {}) as Partial<WebDavConfig>
+    const view = (loaded.view || {}) as { defaultMode?: 'compact' | 'detailed' }
+    const ui = (loaded.ui || {}) as { showPinnedWebsites?: boolean }
+    Object.assign(config.ai, ai)
+    Object.assign(config.icon, icon, {
+      source: icon.source === 'faviconextractor' ? 'faviconextractor' : 'google',
+    })
+    Object.assign(config.webdav, webdav)
+    Object.assign(config.background, {
+      ...DEFAULT_BACKGROUND_CONFIG,
+      ...((loaded.background || {}) as Partial<BackgroundConfig>),
+    })
+    config.title = ai.websiteTitle || config.title
+    config.navigationName = ai.navigationName || config.navigationName
+    config.defaultViewMode = view.defaultMode || config.defaultViewMode
+    config.showPinned = ui.showPinnedWebsites ?? config.showPinned
+    const search = (loaded.search || {}) as Partial<SearchConfig>
+    config.search = {
+      mode: search.mode === 'external' ? 'external' : 'internal',
+      externalSources: Array.isArray(search.externalSources) ? search.externalSources : [],
+      defaultEngine: search.defaultEngine,
+      customEngineUrl: search.customEngineUrl,
+      customEngineIcon: search.customEngineIcon,
+    }
+    config.weather = (loaded.weather || { enabled: false }) as WeatherConfig
+    config.ticker = (loaded.ticker || { enabled: false }) as TickerConfig
+    document.title = config.title
+  }
+
+  function saveLocal() {
+    localStorage.setItem(
+      DATA_KEY,
+      JSON.stringify({ links: links.value, categories: categories.value })
+    )
+  }
+
+  function invalidateToken() {
+    if (!authRequired.value) authRequired.value = true
+    token.value = ''
+    localStorage.removeItem(AUTH_KEY)
+    void fetchWithTimeout('/api/auth', { method: 'DELETE' }).catch(() => {})
+  }
+
+  function resetAuthRequired() {
+    authRequired.value = false
+  }
+
+  // 云端保存：先落本地缓存（同步、零等待），再防抖 + 去重地上报云端。
+  // 一次性动作（收藏/编辑/排序）会被合并为一次 POST，且当快照与上次成功
+  // 上报内容一致时直接跳过，避免无意义的整体覆写。
+  const SYNC_DEBOUNCE = 350
+  let debounceTimer: number | undefined
+  let flushChain: Promise<void> = Promise.resolve()
+  let pendingSnapshot: string | null = null
+  let lastSentSnapshot = ''
+
+  function currentSnapshot() {
+    return JSON.stringify({ links: links.value, categories: categories.value })
+  }
+
+  function markSavedTemporarily() {
+    syncStatus.value = 'saved'
+    if (syncIdleTimer) window.clearTimeout(syncIdleTimer)
+    syncIdleTimer = window.setTimeout(() => (syncStatus.value = 'idle'), 1200)
+  }
+
+  async function enqueueSnapshot(payload: string) {
+    try {
+      const response = await fetchWithTimeout('/api/storage', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: payload,
+      })
+      if (!response.ok) {
+        if (response.status === 401) invalidateToken()
+        throw new Error(`HTTP ${response.status}`)
+      }
+      lastSentSnapshot = payload
+      markSavedTemporarily()
+    } catch {
+      syncStatus.value = 'error'
+    }
+  }
+
+  async function runFlush() {
+    debounceTimer = undefined
+    if (pendingSnapshot == null) return
+    const payload = pendingSnapshot
+    pendingSnapshot = null
+    // 登录态丢失后不再上报；数据已持久化到本地缓存。
+    if (!token.value) return
+    // 快照与上次成功上报一致（例如修改后又撤销），无需再 POST。
+    if (payload === lastSentSnapshot) {
+      markSavedTemporarily()
+      return
+    }
+    syncStatus.value = 'saving'
+    // 串行化：即便防抖窗口被后续动作重置，也保证上报有序、后写覆盖先写。
+    flushChain = flushChain.then(() => enqueueSnapshot(payload))
+    await flushChain
+  }
+
+  function persist(): Promise<void> {
+    saveLocal()
+    pendingSnapshot = currentSnapshot()
+    if (!token.value) return Promise.resolve()
+    if (debounceTimer != null) window.clearTimeout(debounceTimer)
+    debounceTimer = window.setTimeout(() => void runFlush(), SYNC_DEBOUNCE)
+    return flushChain
+  }
+
+  /** 立即上报（关键操作，如备份恢复、退出前），跳过防抖窗口。 */
+  async function flushNow(): Promise<void> {
+    if (debounceTimer != null) {
+      window.clearTimeout(debounceTimer)
+      debounceTimer = undefined
+    }
+    await runFlush()
+    await flushChain
+  }
+
+  async function login(password: string) {
+    const response = await fetchWithTimeout('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
+    if (!response.ok) return false
+    const data = await response.json().catch(() => ({}))
+    if (!data.success) return false
+    token.value = 'session'
+    localStorage.removeItem(AUTH_KEY)
+    try {
+      const configResponse = await fetchWithTimeout('/api/storage?bootstrap=true')
+      if (configResponse.ok) {
+        const bootstrap = await configResponse.json()
+        applyConfig(bootstrap.config || {})
+        aiConfigured.value = Boolean(bootstrap.aiConfigured)
+      }
+    } catch {
+      // Authentication remains valid even if private config refresh fails.
+    }
+    return true
+  }
+
+  function logout() {
+    token.value = ''
+    localStorage.removeItem(AUTH_KEY)
+    config.ai.apiKey = ''
+    if (config.ai.providers) {
+      for (const provider of Object.values(config.ai.providers)) {
+        if (provider) provider.apiKey = ''
+      }
+    }
+    void fetchWithTimeout('/api/auth', { method: 'DELETE' }).catch(() => {})
+  }
+
+  function saveLink(link: Partial<LinkItem>) {
+    const prepared = { ...link }
+    const id = prepared.id || crypto.randomUUID()
+    if (prepared.id) {
+      links.value = links.value.map(item =>
+        item.id === prepared.id ? ({ ...item, ...prepared } as LinkItem) : item
+      )
+    } else {
+      links.value.unshift({
+        ...prepared,
+        id,
+        createdAt: Date.now(),
+      } as LinkItem)
+    }
+    persist()
+
+    if (!prepared.icon && prepared.url) {
+      void getIconUrl(prepared.url, config.icon)
+        .then(icon => {
+          const current = links.value.find(item => item.id === id)
+          if (!current || current.icon || !icon) return
+          links.value = links.value.map(item => (item.id === id ? { ...item, icon } : item))
+          persist()
+        })
+        .catch(() => {
+          /* The card keeps using its runtime favicon fallback. */
+        })
+    }
+  }
+
+  async function removeLink(id: string) {
+    links.value = links.value.filter(item => item.id !== id)
+    await persist()
+  }
+
+  let iconBackfillStarted = false
+  function isValidLinkIcon(icon: unknown): boolean {
+    return (
+      typeof icon === 'string' &&
+      !!icon &&
+      (/^(https?:)?\/\//i.test(icon) || icon.startsWith('/') || icon.startsWith('data:image'))
+    )
+  }
+
+  // MCP / 后端直接建链时 Link 不会带 icon 字段；历史遗留的 emoji 图标也因非 URL 而失效。
+  // 数据加载后统一为这些链接回填真实 favicon 地址，使其与通过前端添加快捷方式一致：
+  // 图标被持久化，而不再仅仅依赖运行时 /api/favicon 回退。
+  // 同一域名最终得到的是同一个 favicon 地址，按域名记忆避免重复解析；
+  // 用 in-flight Promise 缓存，保证并发时每个域名也只触发一次 getIconUrl。
+  const iconResolveCache = new Map<string, Promise<string | undefined>>()
+  function resolveDomainIcon(linkUrl: string): Promise<string | undefined> {
+    let domain: string
+    try {
+      domain = new URL(/^https?:\/\//i.test(linkUrl) ? linkUrl : `https://${linkUrl}`).hostname
+    } catch {
+      return Promise.resolve(undefined)
+    }
+    if (!domain) return Promise.resolve(undefined)
+    if (!iconResolveCache.has(domain)) {
+      iconResolveCache.set(
+        domain,
+        getIconUrl(linkUrl, config.icon)
+          .then(icon => icon || undefined)
+          .catch(() => undefined)
+      )
+    }
+    return iconResolveCache.get(domain)!
+  }
+
+  async function backfillLinkIcons(): Promise<void> {
+    if (iconBackfillStarted || !links.value.length) return
+    iconBackfillStarted = true
+    const pending = links.value.filter(link => !isValidLinkIcon(link.icon))
+    if (!pending.length) return
+
+    // 有界并发：避免冷缓存期把所有 /api/favicon 一次性压上去，
+    // 同时明显快于严格串行，且不会阻塞当前页面的交互。
+    const CONCURRENCY = 6
+    const resolved: Array<{ link: LinkItem; icon?: string }> = []
+    let cursor = 0
+    async function worker() {
+      while (cursor < pending.length) {
+        const link = pending[cursor++]
+        try {
+          const icon = await resolveDomainIcon(link.url)
+          resolved.push({ link, icon })
+        } catch {
+          resolved.push({ link })
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, pending.length) }, () => worker()))
+
+    // 全部解析完成后一次性批量写入，减少响应式触发与本地缓存序列化次数。
+    let changed = false
+    for (const { link, icon } of resolved) {
+      if (icon && icon !== link.icon) {
+        link.icon = icon
+        changed = true
+      }
+    }
+    if (changed) {
+      saveLocal()
+      persist()
+    }
+  }
+
+  async function togglePin(id: string) {
+    links.value = links.value.map(item =>
+      item.id === id ? { ...item, pinned: !item.pinned } : item
+    )
+    await persist()
+  }
+
+  async function saveCategory(category: Partial<Category>) {
+    const hasChildren = Boolean(
+      category.id && categories.value.some(item => item.parentId === category.id)
+    )
+    const parentId =
+      category.parentId &&
+      category.parentId !== category.id &&
+      category.id !== 'common' &&
+      !hasChildren &&
+      categories.value.some(item => item.id === category.parentId && !item.parentId)
+        ? category.parentId
+        : undefined
+    // 支持“⭐ 常用推荐”式命名：前导 emoji 自动作为图标
+    const { icon: emojiIcon, name } = splitCategoryIcon(category.name || '')
+    const icon = emojiIcon || category.icon || 'Folder'
+    const prepared = { ...category, name, icon, parentId, isSubcategory: Boolean(parentId) }
+    if (category.id && categories.value.some(item => item.id === category.id)) {
+      categories.value = categories.value.map(item =>
+        item.id === category.id ? ({ ...item, ...prepared } as Category) : item
+      )
+    } else {
+      categories.value.push({
+        ...prepared,
+        id: category.id || crypto.randomUUID(),
+      } as Category)
+    }
+    await persist()
+  }
+
+  async function reorderCategories(orderedIds: string[]) {
+    const positions = new Map(orderedIds.map((id, index) => [id, index]))
+    categories.value = [...categories.value].sort(
+      (a, b) =>
+        (positions.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (positions.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+    )
+    await persist()
+  }
+
+  async function reorderLinks(categoryId: string, orderedIds: string[]) {
+    const position = new Map(orderedIds.map((id, index) => [id, index]))
+    const others: LinkItem[] = []
+    const categoryLinks: LinkItem[] = []
+    for (const link of links.value) {
+      ;(link.categoryId === categoryId ? categoryLinks : others).push(link)
+    }
+    categoryLinks.sort((a, b) => {
+      const pa = position.get(a.id)
+      const pb = position.get(b.id)
+      if (pa === undefined && pb === undefined) return 0
+      if (pa === undefined) return 1
+      if (pb === undefined) return -1
+      return pa - pb
+    })
+    links.value = [...others, ...categoryLinks]
+    await persist()
+  }
+
+  async function removeCategory(id: string) {
+    if (id === 'common') return
+    const removedIds = new Set([
+      id,
+      ...categories.value.filter(item => item.parentId === id).map(item => item.id),
+    ])
+    links.value = links.value.map(link =>
+      removedIds.has(link.categoryId) ? { ...link, categoryId: 'common' } : link
+    )
+    categories.value = categories.value.filter(item => !removedIds.has(item.id))
+    await persist()
+  }
+
+  async function saveConfig(section: string, value: unknown) {
+    if (!token.value) throw new Error('请先登录')
+    const response = await fetchWithTimeout('/api/storage', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ saveConfig: section, config: value }),
+    })
+    if (!response.ok) {
+      if (response.status === 401) invalidateToken()
+      throw new Error(`配置保存失败（${response.status}）`)
+    }
+  }
+
+  async function saveConfigBatch(configs: Record<string, unknown>) {
+    if (!token.value) throw new Error('请先登录')
+    const response = await fetchWithTimeout('/api/storage', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ saveConfig: 'batch', configs }),
+    })
+    if (!response.ok) {
+      if (response.status === 401) invalidateToken()
+      throw new Error(`Config save failed (${response.status})`)
+    }
+  }
+
+  const pinnedLinks = computed(() => links.value.filter(item => item.pinned))
+
+  return {
+    links,
+    categories,
+    pinnedLinks,
+    token,
+    loading,
+    syncStatus,
+    authRequired,
+    aiConfigured,
+    resetAuthRequired,
+    config,
+    init,
+    login,
+    logout,
+    saveLink,
+    removeLink,
+    togglePin,
+    saveCategory,
+    reorderCategories,
+    reorderLinks,
+    removeCategory,
+    persist,
+    flushNow,
+    saveConfig,
+    saveConfigBatch,
+  }
+}
