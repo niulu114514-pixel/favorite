@@ -182,7 +182,7 @@ async function scrapeSiteIcon(domain) {
   return null
 }
 
-function detectMimeType(arrayBuffer) {
+export function detectMimeType(arrayBuffer) {
   const uint8 = new Uint8Array(arrayBuffer)
   if (
     uint8.length >= 8 &&
@@ -241,7 +241,7 @@ function detectMimeType(arrayBuffer) {
     const decoder = new TextDecoder('utf-8')
     const prefix = decoder.decode(uint8.subarray(0, 150)).trim().toLowerCase()
     if (prefix.includes('<svg') || prefix.includes('<?xml')) {
-      return 'application/octet-stream'
+      return 'image/svg+xml'
     }
   } catch {
     // Keep the conservative default below.
@@ -251,13 +251,18 @@ function detectMimeType(arrayBuffer) {
 }
 
 function iconHeaders(mime, corsHeaders, cacheControl) {
+  const isSvg = mime === 'image/svg+xml'
   return {
     'Content-Type': mime,
     'Cache-Control': cacheControl,
     'X-Content-Type-Options': 'nosniff',
-    'Content-Security-Policy':
-      "default-src 'none'; img-src 'self'; style-src 'none'; script-src 'none'",
-    'Content-Disposition': mime === 'application/octet-stream' ? 'attachment' : 'inline',
+    // SVG 是唯一能在自身内部携带脚本的图片格式：直接打开这个地址时，
+    // 同源脚本会执行。用 sandbox 禁用脚本，同时保持 inline 让 <img> 能渲染。
+    // 位图则收紧到只允许自带样式。
+    'Content-Security-Policy': isSvg
+      ? "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+      : "default-src 'none'; img-src 'self'; style-src 'none'; script-src 'none'",
+    'Content-Disposition': 'inline',
     ...corsHeaders,
   }
 }
