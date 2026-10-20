@@ -1532,11 +1532,6 @@ onBeforeUnmount(() => {
       </header>
 
       <aside v-if="tickerItems.length" class="ticker-bar" aria-label="动态速递">
-        <span class="ticker-label">
-          <span class="ticker-live-dot" aria-hidden="true"></span>
-          <Sparkles :size="14" />
-          <span>动态速递</span>
-        </span>
         <div class="ticker-viewport">
           <div class="ticker-track" :class="{ single: tickerItems.length === 1 }">
             <span v-for="(item, index) in tickerItems" :key="index" class="ticker-item">
@@ -3048,36 +3043,15 @@ html.dark .mobile-actions-grid > button.primary {
 .ticker-bar {
   display: flex;
   align-items: center;
-  gap: 14px;
-  height: 42px;
+  height: 40px;
   margin: 10px 18px 0;
-  padding: 0 12px;
-  border: 1px solid #e4eaf4;
-  border-radius: 13px;
-  background: linear-gradient(110deg, #f5f7ff 0%, #fbfcff 58%, #f7fbff 100%);
-  box-shadow: 0 5px 18px rgba(57, 75, 128, 0.06);
+  padding: 0 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(18px) saturate(0.9) brightness(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(0.9) brightness(1.3);
   overflow: hidden;
   white-space: nowrap;
-}
-.ticker-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  padding: 5px 9px;
-  border-radius: 8px;
-  background: rgba(94, 94, 230, 0.09);
-  font-size: 11px;
-  font-weight: 750;
-  color: #5964d9;
-  letter-spacing: 0.02em;
-}
-.ticker-live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #42bd83;
-  box-shadow: 0 0 0 3px rgba(66, 189, 131, 0.14);
 }
 .ticker-viewport {
   position: relative;
@@ -3097,11 +3071,11 @@ html.dark .mobile-actions-grid > button.primary {
 }
 .ticker-viewport::before {
   left: 0;
-  background: linear-gradient(90deg, #fbfcff, transparent);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.55), transparent);
 }
 .ticker-viewport::after {
   right: 0;
-  background: linear-gradient(270deg, #f8fbff, transparent);
+  background: linear-gradient(270deg, rgba(255, 255, 255, 0.55), transparent);
 }
 .ticker-track {
   display: flex;
@@ -4506,22 +4480,20 @@ html.dark .weather-widget:hover {
   color: #c9d8ff;
 }
 html.dark .ticker-bar {
-  background: linear-gradient(110deg, #1c2330, #1a2029 58%, #1a242b);
-  border-color: rgba(172, 194, 230, 0.16);
-  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.12);
+  background: rgba(14, 18, 26, 0.3);
+  backdrop-filter: blur(20px) saturate(0.9);
+  -webkit-backdrop-filter: blur(20px) saturate(0.9);
+  border-color: transparent;
+  box-shadow: none;
 }
 html.dark .ticker-item {
   color: #9ba7b7;
 }
-html.dark .ticker-label {
-  background: rgba(126, 136, 255, 0.14);
-  color: #b8c1ff;
-}
 html.dark .ticker-viewport::before {
-  background: linear-gradient(90deg, #1b222d, transparent);
+  background: linear-gradient(90deg, rgba(16, 20, 28, 0.5), transparent);
 }
 html.dark .ticker-viewport::after {
-  background: linear-gradient(270deg, #1b232c, transparent);
+  background: linear-gradient(270deg, rgba(16, 20, 28, 0.5), transparent);
 }
 html.dark .search-box {
   background: rgba(24, 30, 38, 0.55);
@@ -4830,12 +4802,6 @@ html.dark .secondary-button {
     gap: 9px;
     padding: 0 9px;
     border-radius: 11px;
-  }
-  .ticker-label {
-    padding: 5px 7px;
-  }
-  .ticker-label > span:last-child {
-    display: none;
   }
   .category-tree-groups {
     padding-inline: 4px;
