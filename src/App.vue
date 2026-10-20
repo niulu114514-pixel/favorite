@@ -2238,6 +2238,16 @@ html.dark .brand-splash {
   border-top-color: rgba(255, 255, 255, 0.4);
   background: rgba(255, 255, 255, 0.1);
 }
+/* 壁纸模式下的顶栏控件：与卡片同材质 */
+.app-shell.has-bg .search-box,
+.app-shell.has-bg .search-mode-trigger,
+.app-shell.has-bg .icon-button {
+  background: rgba(255, 255, 255, 0.66);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+.app-shell.has-bg .primary-button {
+  background: rgba(66, 107, 227, 0.86);
+}
 /* 网站卡片：纯半透明（不用 backdrop-filter，避免集成显卡多卡片卡顿） */
 .app-shell.has-bg :deep(.link-card) {
   background: rgba(255, 255, 255, 0.72);
@@ -2677,14 +2687,16 @@ html.dark .flyout-item:hover {
   display: flex;
   align-items: center;
   gap: 9px;
-  background: #f2f4f8;
-  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   padding: 0 13px;
   border-radius: 12px;
   color: #738096;
 }
 .search-box:focus-within {
-  background-color: #fff;
+  background-color: rgba(255, 255, 255, 0.85);
   border-color: #7b9cff;
   box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.12);
 }
@@ -2731,9 +2743,11 @@ html.dark .flyout-item:hover {
   min-height: 38px;
   max-width: 170px;
   padding: 0 11px;
-  border: 1px solid #e1e6ee;
+  border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 11px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
   color: #59667a;
   cursor: pointer;
   font: inherit;
@@ -3099,9 +3113,6 @@ html.dark .mobile-actions-grid > button.primary {
   animation: ticker-scroll 30s linear infinite;
   animation-delay: -8s;
 }
-.ticker-bar:hover .ticker-track {
-  animation-play-state: paused;
-}
 .ticker-item {
   display: inline-flex;
   align-items: center;
@@ -3127,8 +3138,10 @@ html.dark .mobile-actions-grid > button.primary {
 .icon-button {
   width: 38px;
   height: 38px;
-  border: 1px solid #e2e6ed;
-  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
   color: #5b687d;
   border-radius: 10px;
   display: grid;
@@ -3166,12 +3179,13 @@ html.dark .mobile-actions-grid > button.primary {
   cursor: pointer;
 }
 .primary-button {
-  background: #426be3;
+  background: rgba(66, 107, 227, 0.82);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
   color: white;
-  box-shadow: 0 5px 12px rgba(66, 107, 227, 0.2);
 }
 .primary-button:hover {
-  background: #315bd3;
+  background: rgba(49, 91, 211, 0.9);
 }
 .secondary-button {
   background: #eef1f6;
@@ -4510,7 +4524,20 @@ html.dark .ticker-viewport::after {
   background: linear-gradient(270deg, #1b232c, transparent);
 }
 html.dark .search-box {
-  background: #181e26;
+  background: rgba(24, 30, 38, 0.55);
+  backdrop-filter: blur(14px) saturate(0.9);
+  -webkit-backdrop-filter: blur(14px) saturate(0.9);
+}
+html.dark .icon-button,
+html.dark .search-mode-trigger {
+  background: rgba(34, 41, 51, 0.6);
+  backdrop-filter: blur(12px) saturate(0.9);
+  -webkit-backdrop-filter: blur(12px) saturate(0.9);
+}
+html.dark .primary-button {
+  background: rgba(66, 107, 227, 0.7);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
 }
 html.dark .category-nav button,
 html.dark .sidebar-footer button,
