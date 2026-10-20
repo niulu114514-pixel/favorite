@@ -30,7 +30,6 @@ export interface Category {
 export interface AppState {
   links: LinkItem[]
   categories: Category[]
-  darkMode: boolean
 }
 
 export interface WebDavConfig {
@@ -240,7 +239,6 @@ export interface AppConfig {
   // 界面配置
   ui?: {
     showPinnedWebsites: boolean // 是否显示置顶网站
-    darkMode?: boolean // 深色模式偏好（可选，主要使用系统级主题）
   }
 
   // 其他用户偏好设置
