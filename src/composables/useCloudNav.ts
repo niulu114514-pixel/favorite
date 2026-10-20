@@ -74,6 +74,7 @@ export function useCloudNav() {
       mode: 'internal' as SearchConfig['mode'],
       externalSources: [],
     } as SearchConfig,
+    sortMode: 'manual' as 'manual' | 'freq' | 'name',
     weather: { enabled: false } as WeatherConfig,
     ticker: { enabled: false } as TickerConfig,
   })
@@ -172,7 +173,10 @@ export function useCloudNav() {
     const ai = (loaded.ai || {}) as Partial<AIConfig>
     const icon = (loaded.icon || {}) as Partial<IconConfig> & { source?: string }
     const webdav = (loaded.webdav || {}) as Partial<WebDavConfig>
-    const view = (loaded.view || {}) as { defaultMode?: 'compact' | 'detailed' }
+    const view = (loaded.view || {}) as {
+      defaultMode?: 'compact' | 'detailed'
+      sortMode?: 'manual' | 'freq' | 'name'
+    }
     const ui = (loaded.ui || {}) as { showPinnedWebsites?: boolean }
     Object.assign(config.ai, ai)
     Object.assign(config.icon, icon, {
@@ -186,6 +190,7 @@ export function useCloudNav() {
     config.title = ai.websiteTitle || config.title
     config.navigationName = ai.navigationName || config.navigationName
     config.defaultViewMode = view.defaultMode || config.defaultViewMode
+    config.sortMode = view.sortMode || config.sortMode
     config.showPinned = ui.showPinnedWebsites ?? config.showPinned
     const search = (loaded.search || {}) as Partial<SearchConfig>
     config.search = {

@@ -30,7 +30,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test",
+    "test": "node --test --experimental-strip-types",
     "check": "pnpm type-check && pnpm lint && pnpm format:check && pnpm test && pnpm build",
     "lint": "eslint src --ext ts,vue --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint src --ext ts,vue --fix",

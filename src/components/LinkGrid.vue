@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   ArrowDown,
   ArrowUp,
+  Check,
   GripVertical,
   MoreHorizontal,
   Pencil,
@@ -12,6 +13,7 @@ import {
 import type { LinkItem } from '../../types'
 import { favicon, handleFaviconError } from '../composables/useFavicon'
 import { linkSubtitle, safeTargetUrl } from '../utils/url'
+import { recordLinkClick } from '../services/linkStats'
 
 const props = defineProps<{
   links: LinkItem[]
@@ -19,6 +21,12 @@ const props = defineProps<{
   canManage: boolean
   /** 隐藏编辑/删除等工具条（管理员预览用，纯展示开关） */
   hideTools?: boolean
+  /** 健康检查报告：url -> true 表示失效 */
+  healthDeadMap?: Record<string, boolean>
+  /** 多选模式：卡片点击变为选中切换 */
+  multiSelect?: boolean
+  /** 已选中的链接 id */
+  selectedIds?: Set<string>
 }>()
 
 const emit = defineEmits<{
@@ -26,7 +34,17 @@ const emit = defineEmits<{
   edit: [link: LinkItem]
   delete: [link: LinkItem]
   reorder: [orderedIds: string[]]
+  'toggle-select': [id: string]
 }>()
+
+function onCardActivate(link: LinkItem, event: MouseEvent) {
+  if (props.multiSelect) {
+    event.preventDefault()
+    emit('toggle-select', link.id)
+    return
+  }
+  recordLinkClick(link.id)
+}
 
 const dragId = ref<string | null>(null)
 const overId = ref<string | null>(null)
@@ -112,11 +130,19 @@ function dropOn(overIdValue: string) {
       @drop.prevent="dropOn(link.id)"
     >
       <a
-        class="link-card"
+        :class="['link-card', { dead: props.healthDeadMap?.[link.url], selected: props.selectedIds?.has(link.id) }]"
         :href="safeTargetUrl(link.url)"
         target="_blank"
         rel="noopener noreferrer"
+        @click="onCardActivate(link, $event)"
       >
+        <span
+          v-if="props.multiSelect"
+          class="card-check"
+          :class="{ on: props.selectedIds?.has(link.id) }"
+          aria-hidden="true"
+          ><Check :size="13" :stroke-width="3.5"
+        /></span>
         <img
           :src="favicon(link)"
           alt=""

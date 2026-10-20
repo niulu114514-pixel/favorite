@@ -21,6 +21,7 @@ import {
   Camera,
   Car,
   Check,
+  ListChecks,
   ChevronDown,
   ChevronRight,
   Clapperboard,
@@ -98,6 +99,7 @@ import { favicon, handleFaviconError } from './composables/useFavicon'
 import { isEmojiIcon } from './services/categoryIconUtil'
 import { linkSubtitle, safeTargetUrl } from './utils/url'
 import { generateLinkDescription } from './services/aiService'
+import { recordLinkClick, getClickCount } from './services/linkStats'
 import { fetchSiteMetadata } from './services/siteMetadataService'
 
 const SettingsPanel = defineAsyncComponent(() => import('./components/SettingsPanel.vue'))
@@ -196,6 +198,7 @@ const commandItems = computed<CommandItem[]>(() => {
         hint: link.url,
         exec: () => {
           closeCommand()
+          handleLinkClick(link)
           window.open(safeTargetUrl(link.url), '_blank', 'noopener')
         },
       })
@@ -462,6 +465,87 @@ function searchableText(link: LinkItem) {
   return text
 }
 
+// 链接体检报告：url -> 是否失效。由设置面板触发检测，卡片据此标红。
+const healthReport = ref<{ at: number; results: Array<{ url: string; ok: boolean; status: number }> } | null>(null)
+const healthDeadMap = computed(() => {
+  const map: Record<string, boolean> = {}
+  for (const item of healthReport.value?.results || []) {
+    if (!item.ok) map[item.url] = true
+  }
+  return map
+})
+
+function isDeadLink(url: string) {
+  return Boolean(healthDeadMap.value[url])
+}
+
+async function loadHealthReport() {
+  try {
+    const res = await fetch('/api/health', { method: 'GET' })
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}))
+      if (data.report) healthReport.value = data.report
+    }
+  } catch {
+    // 静默：报告不可用不影响主流程
+  }
+}
+
+// 点击统计版本号：recordLinkClick 写 localStorage，需要手动 bump 触发重排
+const clickStatsTick = ref(0)
+
+// 多选批量操作：仅管理登录态可用，避免访客误触
+const multiSelectMode = ref(false)
+const selectedLinkIds = ref<Set<string>>(new Set())
+const batchMoveTarget = ref('')
+
+function toggleMultiSelect() {
+  multiSelectMode.value = !multiSelectMode.value
+  if (!multiSelectMode.value) selectedLinkIds.value = new Set()
+}
+
+function toggleLinkSelect(id: string) {
+  const next = new Set(selectedLinkIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedLinkIds.value = next
+}
+
+function exitMultiSelect() {
+  multiSelectMode.value = false
+  selectedLinkIds.value = new Set()
+  batchMoveTarget.value = ''
+}
+
+async function batchMove() {
+  const target = batchMoveTarget.value
+  if (!target || !selectedLinkIds.value.size) return
+  for (const id of selectedLinkIds.value) {
+    const link = nav.links.value.find(item => item.id === id)
+    if (!link) continue
+    await nav.saveLink({ ...link, categoryId: target, alsoInCommon: false })
+  }
+  exitMultiSelect()
+}
+
+async function batchDelete() {
+  if (!selectedLinkIds.value.size) return
+  for (const id of selectedLinkIds.value) {
+    await nav.removeLink(id)
+  }
+  exitMultiSelect()
+}
+
+function handleLinkClick(link: LinkItem, event?: MouseEvent) {
+  if (multiSelectMode.value) {
+    if (event) event.preventDefault()
+    toggleLinkSelect(link.id)
+    return
+  }
+  recordLinkClick(link.id)
+  clickStatsTick.value += 1
+}
+
 const linksByCategory = computed(() => {
   const grouped = new Map<string, LinkItem[]>()
   for (const link of visibleLinks.value) {
@@ -470,10 +554,28 @@ const linksByCategory = computed(() => {
     // 叠加显示到「常用推荐」
     if (link.alsoInCommon && link.categoryId !== 'common') pushToGroup(grouped, 'common', link)
   }
+  const sortMode = nav.config.sortMode
+  // 触碰 clickStatsTick：按频率排序时，点击计数变化要触发重算
+  void clickStatsTick.value
   for (const items of grouped.values()) {
-    items.sort(
-      (a, b) => (a.weight ?? Infinity) - (b.weight ?? Infinity) || (a.order ?? 0) - (b.order ?? 0)
-    )
+    if (sortMode === 'freq') {
+      items.sort(
+        (a, b) =>
+          getClickCount(b.id) - getClickCount(a.id) ||
+          (a.weight ?? Infinity) - (b.weight ?? Infinity) ||
+          (a.order ?? 0) - (b.order ?? 0)
+      )
+    } else if (sortMode === 'name') {
+      items.sort(
+        (a, b) =>
+          a.title.localeCompare(b.title, 'zh-Hans-CN') ||
+          (a.weight ?? Infinity) - (b.weight ?? Infinity)
+      )
+    } else {
+      items.sort(
+        (a, b) => (a.weight ?? Infinity) - (b.weight ?? Infinity) || (a.order ?? 0) - (b.order ?? 0)
+      )
+    }
   }
   return grouped
 })
@@ -1068,6 +1170,21 @@ function handleGlobalKeydown(event: KeyboardEvent) {
     void nextTick(() => searchInput.value?.focus())
   }
   if (event.key === 'Escape') searchQuery.value = ''
+  // 数字 1-9 直达第 N 个分类（输入态不响应）
+  if (
+    /^[1-9]$/.test(event.key) &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
+    !isEditing &&
+    !searchQuery.value
+  ) {
+    const target = orderedCategories.value[Number(event.key) - 1]
+    if (target) {
+      event.preventDefault()
+      jumpTo(target.id)
+    }
+  }
 }
 
 /** 随机背景图层的样式（含模糊）。深色模式/透明底时保留放大以隐藏模糊边缘。 */
@@ -1091,8 +1208,25 @@ watch(
 )
 
 onMounted(async () => {
+  void loadHealthReport()
   applyTheme()
   await nav.init()
+
+  // Web Share Target：手机系统分享进来的链接直接进入添加流程
+  try {
+    const params = new URLSearchParams(window.location.search)
+    const sharedUrl =
+      params.get('url') || (params.get('text') || '').match(/https?:\/\/\S+/)?.[0] || ''
+    if (sharedUrl && /^https?:\/\//i.test(sharedUrl)) {
+      const sharedTitle = (params.get('title') || '').trim()
+      openLinkModalForCategory(nav.categories.value[0]?.id || 'common')
+      editingLink.value.url = sharedUrl
+      if (sharedTitle) editingLink.value.title = sharedTitle
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  } catch {
+    // 分享参数异常不影响正常加载
+  }
   background.apply(nav.config.background)
   if (!hasSavedViewMode) compact.value = nav.config.defaultViewMode === 'compact'
   const params = new URLSearchParams(location.search)
@@ -1435,6 +1569,16 @@ onBeforeUnmount(() => {
           >
             <Settings />
           </button>
+          <button
+            v-if="nav.token.value"
+            class="icon-button"
+            :class="{ active: multiSelectMode }"
+            :aria-label="multiSelectMode ? '退出多选' : '多选模式'"
+            :title="multiSelectMode ? '退出多选' : '多选模式'"
+            @click="toggleMultiSelect"
+          >
+            <ListChecks :size="18" />
+          </button>
           <button v-if="nav.token.value" class="primary-button" @click="openLinkModal()">
             <Plus :size="18" /><span>添加网站</span>
           </button>
@@ -1573,10 +1717,19 @@ onBeforeUnmount(() => {
                   compact,
                 ]"
                 class="link-card pinned-card"
+                :class="{ dead: isDeadLink(link.url) }"
                 :href="safeTargetUrl(link.url)"
+                @click="handleLinkClick(link, $event)"
                 target="_blank"
                 rel="noopener noreferrer"
               >
+                <span
+                  v-if="multiSelectMode"
+                  class="card-check"
+                  :class="{ on: selectedLinkIds.has(link.id) }"
+                  aria-hidden="true"
+                  ><Check :size="13" :stroke-width="3.5"
+                /></span>
                 <img
                   :src="favicon(link)"
                   alt=""
@@ -1614,6 +1767,11 @@ onBeforeUnmount(() => {
                 }"
               >
                 <div class="section-title">
+                  <span
+                    class="category-dot"
+                    :style="{ background: category.color || '#8f9bb3' }"
+                    aria-hidden="true"
+                  />
                   <h2>
                     <template v-if="isEmojiIcon(category.icon)">
                       <span class="emoji-icon">{{ category.icon }}</span>
@@ -1628,6 +1786,10 @@ onBeforeUnmount(() => {
                   :compact="compact"
                   :can-manage="Boolean(nav.token.value)"
                   :hide-tools="hideTools"
+                  :health-dead-map="healthDeadMap"
+                  :multi-select="multiSelectMode"
+                  :selected-ids="selectedLinkIds"
+                  @toggle-select="toggleLinkSelect"
                   @pin="nav.togglePin"
                   @edit="openLinkModal"
                   @delete="deleteLink"
@@ -1673,6 +1835,10 @@ onBeforeUnmount(() => {
                   :compact="compact"
                   :can-manage="Boolean(nav.token.value)"
                   :hide-tools="hideTools"
+                  :health-dead-map="healthDeadMap"
+                  :multi-select="multiSelectMode"
+                  :selected-ids="selectedLinkIds"
+                  @toggle-select="toggleLinkSelect"
                   @pin="nav.togglePin"
                   @edit="openLinkModal"
                   @delete="deleteLink"
@@ -2009,10 +2175,25 @@ onBeforeUnmount(() => {
       </form>
     </div>
 
+    <transition name="fade">
+      <div v-if="multiSelectMode && selectedLinkIds.size" class="batch-toolbar" role="toolbar">
+        <span class="batch-count">已选 {{ selectedLinkIds.size }}</span>
+        <select v-model="batchMoveTarget" class="batch-select" aria-label="移动到分类">
+          <option value="">移动到分类…</option>
+          <option v-for="c in orderedCategories.filter(x => !x.parentId)" :key="c.id" :value="c.id">
+            {{ c.name }}
+          </option>
+        </select>
+        <button class="batch-btn" :disabled="!batchMoveTarget" @click="batchMove">移动</button>
+        <button class="batch-btn danger" @click="batchDelete">删除</button>
+        <button class="batch-btn ghost" @click="exitMultiSelect">取消</button>
+      </div>
+    </transition>
     <SettingsPanel
       v-if="settingsOpen"
       :open="settingsOpen"
       :config="{
+        sortMode: nav.config.sortMode,
         ai: nav.config.ai,
         icon: nav.config.icon,
         webdav: nav.config.webdav,
@@ -2239,6 +2420,92 @@ html.dark .brand-splash {
 .app-shell.has-bg .icon-button {
   background: rgba(255, 255, 255, 0.66);
   border-color: rgba(255, 255, 255, 0.5);
+}
+
+.icon-button.active {
+  background: rgba(99, 102, 241, 0.22);
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #4f46e5;
+}
+
+.card-check {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.25);
+  display: grid;
+  place-items: center;
+  color: transparent;
+  z-index: 3;
+}
+.card-check.on {
+  background: #426be3;
+  border-color: #426be3;
+  color: #fff;
+}
+.link-card.selected {
+  border-color: #426be3;
+}
+
+.batch-toolbar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(30, 37, 48, 0.92);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  color: #e5e9f0;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+.batch-count {
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.batch-select {
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  padding: 0 8px;
+  max-width: 180px;
+}
+.batch-btn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.batch-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.batch-btn.danger {
+  background: rgba(239, 68, 68, 0.85);
+  border-color: transparent;
+  color: #fff;
+}
+.batch-btn.ghost {
+  background: transparent;
 }
 .app-shell.has-bg .primary-button {
   background: rgba(66, 107, 227, 0.86);
@@ -3324,6 +3591,15 @@ html.dark .mobile-actions-grid > button.primary {
   display: flex;
   align-items: center;
 }
+
+.category-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  margin-right: 2px;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.18);
+}
 .section-title h2 {
   flex: 1;
 }
@@ -3862,6 +4138,15 @@ html.dark .command-empty {
     border-color 0.18s ease,
     box-shadow 0.18s ease;
   box-shadow: 0 2px 5px rgba(28, 39, 60, 0.025);
+}
+
+/* 体检判定失效的链接：红边 + 图标置灰，提示但不自动删除 */
+.link-card.dead {
+  border-color: rgba(239, 68, 68, 0.45);
+}
+.link-card.dead img {
+  filter: grayscale(1);
+  opacity: 0.55;
 }
 .compact .link-card {
   min-height: 56px;

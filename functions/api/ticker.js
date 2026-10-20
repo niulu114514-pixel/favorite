@@ -45,6 +45,71 @@ async function readTickerConfig(kv) {
   return config.ticker || null
 }
 
+// RSS：正则解析（Workers 环境无 DOMParser），KV 缓存 5 分钟减少重复拉取
+async function fetchRss(cfg, kv) {
+  const raw = str(cfg.rssUrl)
+  if (!raw) return { error: 'RSS 未配置订阅地址' }
+  let base
+  try {
+    const parsed = new URL(raw)
+    if (!/^https?:$/.test(parsed.protocol) || isPrivateHostname(parsed.hostname)) {
+      return { error: 'RSS 地址无效（仅支持公网 http/https）' }
+    }
+    base = parsed.toString()
+  } catch {
+    return { error: 'RSS 地址无效' }
+  }
+
+  if (kv) {
+    try {
+      const cached = await kv.get('ticker_rss_cache')
+      if (cached) {
+        const data = JSON.parse(cached)
+        if (data.url === base && data.at > Date.now() - 5 * 60 * 1000) {
+          return { enabled: true, items: data.items }
+        }
+      }
+    } catch {
+      // 缓存异常时直接拉取
+    }
+  }
+
+  let xml = ''
+  try {
+    const res = await fetch(base, {
+      headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' },
+    })
+    if (!res.ok) return { error: `RSS 拉取失败：${res.status}` }
+    xml = await res.text()
+  } catch {
+    return { error: 'RSS 拉取失败' }
+  }
+
+  const items = []
+  const itemRe = /<(?:item|entry)[\s>][\s\S]*?<\/(?:item|entry)>/gi
+  const titleRe = /<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i
+  let match
+  while ((match = itemRe.exec(xml)) && items.length < 10) {
+    const t = titleRe.exec(match[0])
+    if (t) {
+      const text = stripHtml(t[1]).trim()
+      if (text) items.push(text.slice(0, 120))
+    }
+  }
+  if (!items.length) return { error: 'RSS 中没有可显示的条目' }
+
+  if (kv) {
+    try {
+      await kv.put('ticker_rss_cache', JSON.stringify({ url: base, items, at: Date.now() }), {
+        expirationTtl: 600,
+      })
+    } catch {
+      // 缓存写入失败不影响本次展示
+    }
+  }
+  return { enabled: true, items }
+}
+
 async function fetchMastodon(cfg) {
   const instance = str(cfg.mastodonInstance)
   const username = str(cfg.mastodonUsername)
@@ -143,6 +208,10 @@ export async function onRequest(context) {
     const cfg = (await readTickerConfig(kv)) || {}
     if (!cfg.enabled || !cfg.source) {
       return jsonResponse({ enabled: false }, 200, corsHeaders)
+    }
+    if (cfg.source === 'rss') {
+      const result = await fetchRss(cfg, kv)
+      return jsonResponse({ enabled: true, ...result }, 200, corsHeaders)
     }
     if (cfg.source === 'mastodon') {
       const result = await fetchMastodon(cfg)

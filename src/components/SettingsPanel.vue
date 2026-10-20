@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import {
+  Activity,
   ArrowDown,
   ArrowUp,
   Banknote,
@@ -77,10 +78,13 @@ import {
   Wrench,
   X,
   Zap,
+  GripVertical,
+  ArrowDownAZ,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 import type {
   AIConfig,
+  LinkItem,
   AIProvider,
   BackgroundConfig,
   Category,
@@ -95,6 +99,7 @@ import { DEFAULT_BACKGROUND_CONFIG } from '../../types'
 import { DEFAULT_ICON_CONFIG } from '../services/iconService'
 import { testAIConfig } from '../services/aiService'
 import { isEmojiIcon, splitCategoryIcon } from '../services/categoryIconUtil'
+import { downloadBookmarksHtml } from '../utils/bookmarkExport'
 
 type SettingsDraft = {
   ai: AIConfig
@@ -108,6 +113,7 @@ type SettingsDraft = {
   navigationName: string
   showPinned: boolean
   defaultViewMode: 'compact' | 'detailed'
+  sortMode: 'manual' | 'freq' | 'name'
 }
 
 const props = defineProps<{
@@ -140,6 +146,56 @@ const testingAI = ref(false)
 const aiMessage = ref('')
 const aiTestFailed = ref(false)
 const webdavMessage = ref('')
+
+const healthBusy = ref(false)
+const healthReport = ref<{
+  at: number
+  total: number
+  dead: number
+  results: Array<{ url: string; ok: boolean; status: number }>
+} | null>(null)
+const healthError = ref('')
+
+const deadItems = computed(() => {
+  const deadUrls = (healthReport.value?.results || []).filter(r => !r.ok).map(r => r.url)
+  const backup = props.buildBackup() as { links?: Array<{ url: string; title?: string }> }
+  const titleMap = new Map((backup.links || []).map(l => [l.url, l.title || l.url]))
+  return deadUrls.map(url => ({ url, title: titleMap.get(url) || url }))
+})
+
+async function runHealthCheck() {
+  if (healthBusy.value) return
+  healthBusy.value = true
+  healthError.value = ''
+  try {
+    const backup = props.buildBackup() as { links?: Array<{ url: string }> }
+    const urls = [...new Set((backup.links || []).map(l => l.url).filter(Boolean))]
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (props.token && props.token !== 'session') headers['x-auth-password'] = props.token
+    const res = await fetch('/api/health', {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ urls }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    healthReport.value = data.report
+  } catch (err) {
+    healthError.value = err instanceof Error ? err.message : '检测失败'
+  } finally {
+    healthBusy.value = false
+  }
+}
+
+function exportBookmarksHtml() {
+  const backup = props.buildBackup() as { links?: LinkItem[]; categories?: Category[] }
+  downloadBookmarksHtml(
+    backup.links || [],
+    backup.categories || [],
+    draft.navigationName || 'CloudNav'
+  )
+}
 const webdavBusy = ref(false)
 const saveError = ref('')
 const copied = ref(false)
@@ -159,8 +215,20 @@ const settingsTabs = [
   { id: 'ticker', label: '滚动信息', icon: TrendingUp },
   { id: 'ai', label: 'AI 助手', icon: Sparkles },
   { id: 'mcp', label: 'MCP 客户端', icon: KeyRound },
+  { id: 'health', label: '链接体检', icon: Activity },
   { id: 'webdav', label: 'WebDAV 备份', icon: Cloud },
 ]
+watch(activeSection, id => {
+  if (id === 'health' && !healthReport.value && !healthBusy.value) {
+    fetch('/api/health')
+      .then(r => r.json())
+      .then(d => {
+        if (d.report) healthReport.value = d.report
+      })
+      .catch(() => {})
+  }
+})
+
 const activeSettingsTab = computed(
   () => settingsTabs.find(tab => tab.id === activeSection.value) || settingsTabs[0]
 )
@@ -206,6 +274,7 @@ const mcpClientConfig = computed(() =>
 
 function createDraft(source: SettingsDraft): SettingsDraft {
   return {
+    sortMode: source.sortMode || 'manual',
     ai: {
       ...source.ai,
       providers: source.ai.providers ? JSON.parse(JSON.stringify(source.ai.providers)) : undefined,
@@ -433,7 +502,10 @@ function originalSectionValue(name: SettingsSection, source: SettingsDraft) {
       return { showPinnedWebsites: source.showPinned }
     case 'view':
       // props.config 上不存在独立的 `view` 字段，需映射到 `defaultViewMode`。
-      return { defaultMode: source.defaultViewMode }
+      return {
+        defaultMode: source.defaultViewMode,
+        sortMode: (source as { sortMode?: 'manual' | 'freq' | 'name' }).sortMode || 'manual',
+      }
     default:
       return source[name]
   }
@@ -450,7 +522,7 @@ async function save() {
     }
   )
   sections.push(['ui', { showPinnedWebsites: draft.showPinned }])
-  sections.push(['view', { defaultMode: draft.defaultViewMode }])
+  sections.push(['view', { defaultMode: draft.defaultViewMode, sortMode: draft.sortMode }])
   try {
     for (const [section, value] of sections) {
       const key = section as SettingsSection
@@ -574,13 +646,32 @@ const categoryModalOpen = ref(false)
 const savingCategory = ref(false)
 const expandedManagerCategoryIds = ref<Set<string>>(new Set())
 
-type CategoryModal = { id: string | null; name: string; parentId: string; icon: string }
+type CategoryModal = {
+  id: string | null
+  name: string
+  parentId: string
+  icon: string
+  color: string
+}
 const categoryModal = ref<CategoryModal>({
   id: null,
   name: '',
   parentId: '',
   icon: 'Folder',
+  color: '',
 })
+
+/** 分类主题色板：与卡片图标底色、区块标识共用 */
+const CATEGORY_COLOR_PALETTE = [
+  { value: '', label: '默认' },
+  { value: '#6366f1', label: '靛蓝' },
+  { value: '#0ea5e9', label: '天蓝' },
+  { value: '#10b981', label: '翠绿' },
+  { value: '#f59e0b', label: '琥珀' },
+  { value: '#ef4444', label: '赤红' },
+  { value: '#8b5cf6', label: '紫罗兰' },
+  { value: '#ec4899', label: '桃粉' },
+]
 
 /** 可选分类图标（需与 App.vue 中的 CATEGORY_ICON_MAP 保持一致） */
 const categoryIconOptions: { name: string; icon: Component }[] = [
@@ -714,7 +805,7 @@ function toggleManagerCategory(categoryId: string) {
 }
 
 function openNewCategory() {
-  categoryModal.value = { id: null, name: '', parentId: '', icon: 'Folder' }
+  categoryModal.value = { id: null, name: '', parentId: '', icon: 'Folder', color: '' }
   categoryModalOpen.value = true
 }
 
@@ -723,7 +814,7 @@ function openAddChild(parent: Category) {
   if (!expandedManagerCategoryIds.value.has(parent.id)) {
     expandedManagerCategoryIds.value = new Set([...expandedManagerCategoryIds.value, parent.id])
   }
-  categoryModal.value = { id: null, name: '', parentId: parent.id, icon: 'Folder' }
+  categoryModal.value = { id: null, name: '', parentId: parent.id, icon: 'Folder', color: '' }
   categoryModalOpen.value = true
 }
 
@@ -733,6 +824,7 @@ function openEditCategory(category: Category) {
     name: category.name,
     parentId: category.parentId || '',
     icon: category.icon || 'Folder',
+    color: category.color || '',
   }
   categoryModalOpen.value = true
 }
@@ -963,6 +1055,44 @@ function formatSize(bytes: number) {
                   >
                     <Grid2X2 :size="16" /><span
                       ><strong>紧凑</strong><small>展示更多网站</small></span
+                    >
+                  </button>
+                </div>
+              </div>
+              <div class="view-choice-field">
+                <span>卡片排序</span>
+                <div class="view-choice-group" role="radiogroup" aria-label="卡片排序">
+                  <button
+                    type="button"
+                    :class="{ active: draft.sortMode === 'manual' }"
+                    role="radio"
+                    :aria-checked="draft.sortMode === 'manual'"
+                    @click="draft.sortMode = 'manual'"
+                  >
+                    <GripVertical :size="16" /><span
+                      ><strong>手动</strong><small>保持拖拽顺序</small></span
+                    >
+                  </button>
+                  <button
+                    type="button"
+                    :class="{ active: draft.sortMode === 'freq' }"
+                    role="radio"
+                    :aria-checked="draft.sortMode === 'freq'"
+                    @click="draft.sortMode = 'freq'"
+                  >
+                    <TrendingUp :size="16" /><span
+                      ><strong>按频率</strong><small>常用优先</small></span
+                    >
+                  </button>
+                  <button
+                    type="button"
+                    :class="{ active: draft.sortMode === 'name' }"
+                    role="radio"
+                    :aria-checked="draft.sortMode === 'name'"
+                    @click="draft.sortMode = 'name'"
+                  >
+                    <ArrowDownAZ :size="16" /><span
+                      ><strong>按名称</strong><small>字母排序</small></span
                     >
                   </button>
                 </div>
@@ -1459,6 +1589,7 @@ function formatSize(bytes: number) {
             <div class="settings-grid">
               <label
                 >数据源<select v-model="draft.ticker.source">
+                  <option value="rss">RSS 订阅</option>
                   <option value="mastodon">Mastodon</option>
                   <option value="memos">Memos</option>
                   <option value="yiyan">每日一言（随机一言）</option>
@@ -1469,6 +1600,16 @@ function formatSize(bytes: number) {
             <p v-if="draft.ticker.source === 'yiyan'" class="settings-help">
               每条随机从一言官方接口获取并滚动展示，无需额外配置。
             </p>
+            <template v-if="draft.ticker.source === 'rss'">
+              <label
+                >RSS 地址<input
+                  v-model="draft.ticker.rssUrl"
+                  type="url"
+                  placeholder="https://example.com/feed.xml"
+                  autocomplete="off"
+              /></label>
+              <p class="settings-help">取最新 10 条标题滚动展示，5 分钟服务端缓存。</p>
+            </template>
             <template v-if="draft.ticker.source === 'mastodon'">
               <div class="settings-grid">
                 <label
@@ -1608,6 +1749,40 @@ function formatSize(bytes: number) {
 
           <section
             id="settings-webdav"
+            v-if="activeSection === 'health'"
+            class="settings-section settings-card"
+          >
+            <h3><Activity :size="17" /> 链接体检</h3>
+            <p class="settings-help">
+              批量探测全部收藏链接的可达性（HEAD 请求、并发 5、单站 8 秒超时）。
+              失效链接会在卡片上标红置灰，但不会自动删除。
+            </p>
+            <div class="settings-grid">
+              <button
+                class="primary-button"
+                type="button"
+                :disabled="healthBusy"
+                @click="runHealthCheck"
+              >
+                {{ healthBusy ? '检测中…' : healthReport ? '重新检测' : '开始检测' }}
+              </button>
+            </div>
+            <p v-if="healthError" class="settings-help" style="color: #ef4444">
+              {{ healthError }}
+            </p>
+            <p v-if="healthReport" class="settings-help">
+              上次检测：{{ new Date(healthReport.at).toLocaleString() }} · 共
+              {{ healthReport.total }} 个链接，失效 {{ healthReport.dead }} 个
+            </p>
+            <ul v-if="deadItems.length" class="health-dead-list">
+              <li v-for="item in deadItems" :key="item.url">
+                <strong>{{ item.title }}</strong>
+                <small>{{ item.url }}</small>
+              </li>
+            </ul>
+          </section>
+
+          <section
             v-if="activeSection === 'webdav'"
             class="settings-section settings-card"
           >
@@ -1619,6 +1794,14 @@ function formatSize(bytes: number) {
             <label class="settings-check">
               <input v-model="draft.webdav.enabled" type="checkbox" />启用 WebDAV 备份
             </label>
+            <div class="settings-grid">
+              <button class="primary-button" type="button" @click="exportBookmarksHtml">
+                <Download :size="16" /> 导出书签 HTML
+              </button>
+            </div>
+            <p class="settings-help">
+              生成 Netscape 标准书签文件，浏览器与多数导航站可直接导入，作为数据自主权的兜底。
+            </p>
             <div class="settings-grid">
               <label
                 >WebDAV 地址<input
@@ -2048,6 +2231,40 @@ html.dark .settings-backdrop {
   line-height: 1.55;
   margin: 0 0 13px;
   max-width: 680px;
+}
+
+.health-dead-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.health-dead-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.06);
+  font-size: 12px;
+}
+.health-dead-list strong {
+  color: #b91c1c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html.dark .health-dead-list strong {
+  color: #f87171;
+}
+.health-dead-list small {
+  color: inherit;
+  opacity: 0.65;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ai-provider-hint {
   margin-top: -4px;

@@ -22,6 +22,8 @@ export interface Category {
   id: string
   name: string
   icon: string
+  /** 分类主题色（可选），用于区块标识 */
+  color?: string
   parentId?: string
   isSubcategory?: boolean
   weight?: number
@@ -121,12 +123,14 @@ export interface SearchConfig {
 }
 
 // 滚动 Ticker 来源类型
-export type TickerSource = 'mastodon' | 'memos' | 'yiyan' | 'custom'
+export type TickerSource = 'mastodon' | 'memos' | 'yiyan' | 'rss' | 'custom'
 
 // 滚动 Ticker 配置
 export interface TickerConfig {
   enabled: boolean
   source: TickerSource
+  // RSS
+  rssUrl?: string
   // Mastodon
   mastodonInstance?: string
   mastodonUsername?: string
@@ -234,6 +238,7 @@ export interface AppConfig {
   view?: {
     mode: 'compact' | 'detailed' // 用户个人视图偏好
     defaultMode?: 'compact' | 'detailed' // 管理员设置的默认视图模式
+    sortMode?: 'manual' | 'freq' | 'name' // 卡片排序：手动拖拽 / 按访问频率 / 按名称
   }
 
   // 界面配置
